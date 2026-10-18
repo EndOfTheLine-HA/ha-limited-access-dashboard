@@ -1,0 +1,42 @@
+# Example Home Assistant package. Replace every switch entity and create your own
+# random webhook ID in secrets.yaml. Keep local_only enabled: the portal, not the
+# public internet, calls this webhook over the LAN.
+
+automation:
+  - alias: "Guest portal - bounded sprinkler control"
+    id: guest_portal_bounded_sprinkler_control
+    mode: restart
+    max_exceeded: silent
+    triggers:
+      - trigger: webhook
+        webhook_id: !secret guest_portal_sprinkler_webhook_id
+        allowed_methods:
+          - POST
+        local_only: true
+    variables:
+      requested_action: "{{ trigger.json.action | default('invalid') }}"
+      requested_zone: "{{ trigger.json.zone | default('') }}"
+      zone_entities:
+        front_left: switch.replace_with_front_left_zone
+        roses: switch.replace_with_roses_zone
+      all_guest_zones:
+        - switch.replace_with_front_left_zone
+        - switch.replace_with_roses_zone
+    actions:
+      # Fail safe: every request, including an invalid one, first stops all zones.
+      - action: switch.turn_off
+        target:
+          entity_id: "{{ all_guest_zones }}"
+      - if:
+          - condition: template
+            value_template: >-
+              {{ requested_action == 'start' and requested_zone in zone_entities }}
+        then:
+          - action: switch.turn_on
+            target:
+              entity_id: "{{ zone_entities[requested_zone] }}"
+          - delay: "00:05:00"
+          - action: switch.turn_off
+            target:
+              entity_id: "{{ all_guest_zones }}"
+

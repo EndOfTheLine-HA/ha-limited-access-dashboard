@@ -1,0 +1,7 @@
+# Caddy terminates HTTPS. Keep the app bound to loopback or an internal Docker
+# network so port 8787 cannot bypass this reverse proxy.
+guest.example.com {
+    header Strict-Transport-Security "max-age=31536000"
+    reverse_proxy 127.0.0.1:8787
+}
+

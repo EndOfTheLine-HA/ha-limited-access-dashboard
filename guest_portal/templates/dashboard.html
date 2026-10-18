@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block content %}
+  <header class="topbar">
+    <div>
+      <p class="eyebrow">{{ profile.name }}</p>
+      <h1>Hello, {{ account.display_name }}</h1>
+      {% if profile.description %}<p class="lede">{{ profile.description }}</p>{% endif %}
+    </div>
+    <form method="post" action="/logout">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button type="submit" class="quiet">Sign out</button>
+    </form>
+  </header>
+
+  {% if result == 'success' %}
+    <div class="notice success" role="status">{{ action_name }} was sent successfully.</div>
+  {% elif result == 'error' %}
+    <div class="notice error" role="alert">{{ action_name }} could not be reached. Contact the homeowner.</div>
+  {% elif result == 'denied' %}
+    <div class="notice error" role="alert">That control is not permitted for this account.</div>
+  {% elif result == 'rate_limited' %}
+    <div class="notice" role="status">Please wait a moment before trying that control again.</div>
+  {% endif %}
+
+  {% if not available %}
+    <div class="notice error" role="alert">{{ reason }}</div>
+  {% endif %}
+
+  <section class="action-grid" aria-label="Available controls">
+    {% for action in actions %}
+      <article class="action-card accent-{{ action.accent }}">
+        <div>
+          <h2>{{ action.name }}</h2>
+          {% if action.description %}<p>{{ action.description }}</p>{% endif %}
+        </div>
+        {% if action.confirmation %}
+          <a class="button-link{% if not available %} disabled{% endif %}" href="/confirm/{{ action.action_id }}">Review</a>
+        {% else %}
+          <form method="post" action="/actions/{{ action.action_id }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button type="submit" {% if not available %}disabled{% endif %}>Run</button>
+          </form>
+        {% endif %}
+      </article>
+    {% endfor %}
+  </section>
+  <p class="footnote">Controls are logged and limited to the access profile shown above.</p>
+{% endblock %}
+
