@@ -1,0 +1,37 @@
+# Include this file from configuration.yaml with:
+# ha_guest_portal: !include ha_guest_portal.yaml
+#
+# Put the Argon2 hash in secrets.yaml. Generate it with:
+# ha-guest-portal hash-password
+
+title: "Sprinkler Controls"
+timezone: "America/Los_Angeles"
+base_path: "/guest-portal"
+session_hours: 8
+cookie_secure: true
+database_path: "/config/guest-portal-data/portal.db"
+duration_minutes: 5
+
+account:
+  username: "landscaper"
+  display_name: "Landscaper"
+  password_hash: !secret ha_guest_portal_landscaper_hash
+  active_from: "2026-10-20T06:00:00-07:00"
+  expires_at: "2026-10-25T20:00:00-07:00"
+
+schedule:
+  monday: ["06:00-14:45"]
+  tuesday: ["06:00-14:45"]
+  wednesday: ["06:00-14:45"]
+  thursday: ["06:00-14:45"]
+  friday: ["06:00-14:45"]
+  saturday: ["06:00-14:45"]
+  sunday: ["06:00-14:45"]
+
+zones:
+  front_left:
+    name: "Front left grass"
+    entity_id: switch.replace_with_front_left_zone
+  roses:
+    name: "Roses"
+    entity_id: switch.replace_with_roses_zone
