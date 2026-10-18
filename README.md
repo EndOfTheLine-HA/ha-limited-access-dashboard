@@ -85,6 +85,27 @@ No Home Assistant long-lived access token is required.
    The Compose defaults bind to `127.0.0.1:8787`. Set `PORTAL_BIND_IP` and
    `PORTAL_PORT` in `.env` only when you intentionally need a different bind.
 
+## Home Assistant-native installation
+
+For Home Assistant OS or Supervised installations using Home Assistant Cloud,
+the optional custom integration under `custom_components/ha_guest_portal/`
+serves the portal directly from Home Assistant at `/guest-portal`. This allows
+the same path to travel through the owner's Nabu Casa remote URL without giving
+the guest a Home Assistant user account.
+
+1. Copy `custom_components/ha_guest_portal` into `/config/custom_components/`.
+2. Copy `examples/home-assistant/ha_guest_portal.yaml` to `/config/`, replace
+   the example switch entities, and add the password hash to `secrets.yaml`.
+3. Add `ha_guest_portal: !include ha_guest_portal.yaml` to
+   `configuration.yaml`.
+4. Check the Home Assistant configuration and restart Core.
+5. Open `https://<your-nabu-domain>.ui.nabu.casa/guest-portal`.
+
+The HA-native version calls Home Assistant services internally, retains its own
+session, CSRF, schedule, rate-limit, and audit boundaries, and never gives the
+guest general Home Assistant API access. The initial native action adapter is
+for Rachio zone switches and `rachio.start_multiple_zone_schedule`.
+
 ## Configuration model
 
 - `actions` define immutable names, webhook destinations, and JSON payloads.

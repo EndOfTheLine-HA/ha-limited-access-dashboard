@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block content %}
+  <header class="topbar">
+    <div>
+      <p class="eyebrow">Landscaper access</p>
+      <h1>Hello, {{ account.display_name }}</h1>
+      <p class="lede">Each zone test is limited to {{ duration_minutes }} minutes.</p>
+    </div>
+    <form method="post" action="{{ base_path }}/logout">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button type="submit" class="quiet">Sign out</button>
+    </form>
+  </header>
+
+  {% if result == 'success' %}
+    <div class="notice success" role="status">The command was sent successfully.</div>
+  {% elif result == 'error' %}
+    <div class="notice error" role="alert">The command failed. Contact the homeowner.</div>
+  {% elif result == 'denied' %}
+    <div class="notice error" role="alert">That control is not permitted right now.</div>
+  {% elif result == 'rate_limited' %}
+    <div class="notice" role="status">Please wait a moment before trying another control.</div>
+  {% endif %}
+
+  {% if not available %}<div class="notice error" role="alert">{{ reason }}</div>{% endif %}
+
+  <section class="action-grid" aria-label="Available controls">
+    {% for zone in zones %}
+      <article class="action-card">
+        <div>
+          <h2>{{ zone.name }} — {{ duration_minutes }} minutes</h2>
+          <p>Stops other delegated zones before starting this test.</p>
+        </div>
+        <a class="button-link{% if not available %} disabled{% endif %}" href="{{ base_path }}/confirm/{{ zone.zone_id }}">Review</a>
+      </article>
+    {% endfor %}
+    <article class="action-card accent-red">
+      <div>
+        <h2>Stop all water</h2>
+        <p>Immediately turns off every delegated sprinkler zone.</p>
+      </div>
+      <a class="button-link{% if not available %} disabled{% endif %}" href="{{ base_path }}/confirm/stop_all">Review</a>
+    </article>
+  </section>
+  <p class="footnote">Controls are logged and limited to the access schedule shown by the homeowner.</p>
+{% endblock %}

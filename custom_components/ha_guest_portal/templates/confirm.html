@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block content %}
+  <section class="panel confirm-panel">
+    <p class="eyebrow">Confirm control</p>
+    <h1>{{ action_name }}</h1>
+    {% if action_id == 'stop_all' %}
+      <p class="lede">Stop every delegated sprinkler zone now?</p>
+    {% else %}
+      <p class="lede">Run this zone for {{ duration_minutes }} minutes?</p>
+    {% endif %}
+    {% if not available %}<div class="notice error" role="alert">{{ reason }}</div>{% endif %}
+    <div class="confirm-actions">
+      <a class="button-link quiet-link" href="{{ base_path }}">Cancel</a>
+      <form method="post" action="{{ base_path }}/actions/{{ action_id }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button type="submit" class="primary"{% if not available %} disabled{% endif %}>Confirm</button>
+      </form>
+    </div>
+  </section>
+{% endblock %}
