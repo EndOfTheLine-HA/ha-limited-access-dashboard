@@ -87,11 +87,11 @@ No Home Assistant long-lived access token is required.
 
 ## Home Assistant-native installation
 
-For Home Assistant OS or Supervised installations using Home Assistant Cloud,
-the optional custom integration under `custom_components/ha_guest_portal/`
-serves the portal directly from Home Assistant at `/guest-portal`. This allows
-the same path to travel through the owner's Nabu Casa remote URL without giving
-the guest a Home Assistant user account.
+For Home Assistant OS or Supervised installations using Home Assistant Link
+(formerly Home Assistant Cloud), the optional custom integration under
+`custom_components/ha_guest_portal/` serves the portal directly from Home
+Assistant at `/guest-portal`. This allows the same path to travel through the
+owner's Link remote URL without giving the guest a Home Assistant user account.
 
 1. Copy `custom_components/ha_guest_portal` into `/config/custom_components/`.
 2. Copy `examples/home-assistant/ha_guest_portal.yaml` to `/config/`, replace
