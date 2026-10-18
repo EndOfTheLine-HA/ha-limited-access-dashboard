@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block content %}
+  <section class="panel confirm-panel">
+    <p class="eyebrow">Confirm control</p>
+    <h1>{{ action.name }}</h1>
+    <p class="lede">{{ action.confirmation }}</p>
+    <div class="confirm-actions">
+      <a class="button-link quiet-link" href="/">Cancel</a>
+      <form method="post" action="/actions/{{ action.action_id }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button type="submit" class="primary">Confirm</button>
+      </form>
+    </div>
+  </section>
+{% endblock %}

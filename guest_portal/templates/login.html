@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block content %}
+  <section class="panel login-panel">
+    <p class="eyebrow">Restricted access</p>
+    <h1>{{ title }}</h1>
+    <p class="lede">Use the temporary or household credentials provided by the homeowner.</p>
+    {% if request.query_params.get('error') %}
+      <div class="notice error" role="alert">Sign-in failed. Check the credentials or try again later.</div>
+    {% endif %}
+    <form method="post" action="/login" class="stack">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label>Username<input name="username" autocomplete="username" required></label>
+      <label>Password<input type="password" name="password" autocomplete="current-password" required></label>
+      <button type="submit" class="primary">Sign in</button>
+    </form>
+  </section>
+{% endblock %}
+

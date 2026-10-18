@@ -1,0 +1,88 @@
+app:
+  title: "Guest Home Controls"
+  timezone: "America/Los_Angeles"
+  session_hours: 12
+  cookie_secure: true
+  database_path: "data/portal.db"
+  request_timeout_seconds: 5
+  allowed_webhook_hosts:
+    - "homeassistant.local"
+    - "192.168.1.10"
+
+actions:
+  sprinkler_front_left:
+    name: "Front left grass — 5 minutes"
+    description: "Stops every other zone before starting. Automatically shuts off."
+    webhook_url: "http://homeassistant.local:8123/api/webhook/${SPRINKLER_WEBHOOK_ID}"
+    payload: {action: "start", zone: "front_left"}
+    confirmation: "Start the front-left sprinkler zone?"
+    cooldown_seconds: 3
+
+  sprinkler_roses:
+    name: "Roses — 5 minutes"
+    description: "Stops every other zone before starting. Automatically shuts off."
+    webhook_url: "http://homeassistant.local:8123/api/webhook/${SPRINKLER_WEBHOOK_ID}"
+    payload: {action: "start", zone: "roses"}
+    confirmation: "Start the roses sprinkler zone?"
+    cooldown_seconds: 3
+
+  sprinkler_stop_all:
+    name: "Stop all water"
+    description: "Immediately turns off every guest-accessible sprinkler zone."
+    webhook_url: "http://homeassistant.local:8123/api/webhook/${SPRINKLER_WEBHOOK_ID}"
+    payload: {action: "stop"}
+    confirmation: "Stop all sprinkler zones?"
+    cooldown_seconds: 1
+    accent: "red"
+
+  porch_lights:
+    name: "Porch lights"
+    description: "Toggle the rental porch lighting."
+    webhook_url: "http://homeassistant.local:8123/api/webhook/${GUEST_HOME_WEBHOOK_ID}"
+    payload: {action: "toggle", control: "porch_lights"}
+
+profiles:
+  landscaper:
+    name: "Landscaper access"
+    description: "Temporary sprinkler testing controls"
+    actions: [sprinkler_front_left, sprinkler_roses, sprinkler_stop_all]
+    schedule:
+      monday: ["07:00-18:00"]
+      tuesday: ["07:00-18:00"]
+      wednesday: ["07:00-18:00"]
+      thursday: ["07:00-18:00"]
+      friday: ["07:00-18:00"]
+      saturday: ["08:00-17:00"]
+
+  child:
+    name: "Child account"
+    description: "Everyday controls without administrative or private HA access"
+    actions: [porch_lights]
+    schedule: "always"
+
+  rental_guest:
+    name: "Rental guest"
+    description: "Controls available during the reservation"
+    actions: [porch_lights]
+    schedule: "always"
+
+accounts:
+  landscaper:
+    display_name: "Landscaper"
+    profile: "landscaper"
+    password_hash: "${LANDSCAPER_PASSWORD_HASH}"
+    active_from: "2026-10-20T07:00:00-07:00"
+    expires_at: "2026-10-20T18:00:00-07:00"
+
+  child:
+    display_name: "Household member"
+    profile: "child"
+    password_hash: "${CHILD_PASSWORD_HASH}"
+
+  rental-october:
+    display_name: "Welcome"
+    profile: "rental_guest"
+    password_hash: "${RENTAL_PASSWORD_HASH}"
+    active_from: "2026-10-23T16:00:00-07:00"
+    expires_at: "2026-10-27T11:00:00-07:00"
+
