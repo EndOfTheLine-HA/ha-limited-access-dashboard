@@ -1,9 +1,9 @@
 services:
-  portal:
+  dashboard:
     build: .
     restart: unless-stopped
     ports:
-      - "${PORTAL_BIND_IP:-127.0.0.1}:${PORTAL_PORT:-8787}:8787"
+      - "${DASHBOARD_BIND_IP:-127.0.0.1}:${DASHBOARD_PORT:-8787}:8787"
     environment:
       SPRINKLER_WEBHOOK_ID: "${SPRINKLER_WEBHOOK_ID}"
       GUEST_HOME_WEBHOOK_ID: "${GUEST_HOME_WEBHOOK_ID}"
@@ -12,7 +12,7 @@ services:
       RENTAL_PASSWORD_HASH: "${RENTAL_PASSWORD_HASH}"
     volumes:
       - ./config.yml:/app/config.yml:ro
-      - portal-data:/app/data
+      - dashboard-data:/app/data
     read_only: true
     tmpfs:
       - /tmp:size=16m,mode=1777
@@ -22,5 +22,5 @@ services:
       - ALL
 
 volumes:
-  portal-data:
+  dashboard-data:
 

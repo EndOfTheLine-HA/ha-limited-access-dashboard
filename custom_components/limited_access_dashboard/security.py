@@ -13,6 +13,12 @@ _PASSWORD_HASHER = PasswordHasher()
 _DUMMY_HASH = _PASSWORD_HASHER.hash("not-the-password-used-by-any-account")
 
 
+def hash_password(password: str) -> str:
+    if len(password) < 12:
+        raise ValueError("Password must contain at least 12 characters")
+    return _PASSWORD_HASHER.hash(password)
+
+
 def verify_password(password_hash: str | None, password: str) -> bool:
     candidate = password_hash or _DUMMY_HASH
     try:

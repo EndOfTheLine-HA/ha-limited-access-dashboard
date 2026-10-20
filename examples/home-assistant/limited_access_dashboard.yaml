@@ -1,21 +1,21 @@
 # Include this file from configuration.yaml with:
-# ha_guest_portal: !include ha_guest_portal.yaml
+# limited_access_dashboard: !include limited_access_dashboard.yaml
 #
 # Put the Argon2 hash in secrets.yaml. Generate it with:
-# ha-guest-portal hash-password
+# ha-limited-access-dashboard hash-password
 
 title: "Sprinkler Controls"
 timezone: "America/Los_Angeles"
-base_path: "/guest-portal"
+base_path: "/limited-access-dashboard"
 session_hours: 8
 cookie_secure: true
-database_path: "/config/guest-portal-data/portal.db"
+database_path: "/config/limited-access-dashboard-data/dashboard.db"
 duration_minutes: 5
 
 account:
   username: "landscaper"
   display_name: "Landscaper"
-  password_hash: !secret ha_guest_portal_landscaper_hash
+  password_hash: !secret limited_access_dashboard_landscaper_hash
   active_from: "2026-10-20T06:00:00-07:00"
   expires_at: "2026-10-25T20:00:00-07:00"
 

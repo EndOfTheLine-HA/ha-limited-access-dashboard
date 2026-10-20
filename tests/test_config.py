@@ -3,8 +3,8 @@ from pathlib import Path
 
 import pytest
 
-from guest_portal.config import ConfigError, WeeklySchedule, load_settings
-from guest_portal.security import hash_password
+from limited_access_dashboard.config import ConfigError, WeeklySchedule, load_settings
+from limited_access_dashboard.security import hash_password
 
 
 def test_overnight_schedule_uses_previous_day_window() -> None:

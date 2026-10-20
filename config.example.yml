@@ -1,9 +1,9 @@
 app:
-  title: "Guest Home Controls"
+  title: "Limited Access Dashboard"
   timezone: "America/Los_Angeles"
   session_hours: 12
   cookie_secure: true
-  database_path: "data/portal.db"
+  database_path: "data/dashboard.db"
   request_timeout_seconds: 5
   allowed_webhook_hosts:
     - "homeassistant.local"

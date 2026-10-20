@@ -11,21 +11,21 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from .config import Account, PortalAction, load_settings, session_expiry
+from .config import Account, DashboardAction, load_settings, session_expiry
 from .security import RateLimiter, random_token, tokens_match, verify_password
 from .storage import Session, Store
 
-WebhookSender = Callable[[PortalAction, float], Awaitable[int]]
+WebhookSender = Callable[[DashboardAction, float], Awaitable[int]]
 COOKIE_NAME = "hagp_session"
 LOGIN_CSRF_COOKIE = "hagp_login_csrf"
 
 
-async def _send_webhook(action: PortalAction, timeout: float) -> int:
+async def _send_webhook(action: DashboardAction, timeout: float) -> int:
     async with httpx.AsyncClient(timeout=timeout, follow_redirects=False) as client:
         response = await client.post(
             action.webhook_url,
             json=action.payload,
-            headers={"User-Agent": "ha-guest-portal/0.1"},
+            headers={"User-Agent": "ha-limited-access-dashboard/0.1"},
         )
         response.raise_for_status()
         return response.status_code
