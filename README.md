@@ -1,134 +1,123 @@
-# HA Guest Portal
+<p align="center">
+  <img src="brand/icon@2x.png" alt="Limited Access Dashboard logo" width="180">
+</p>
 
-Least-privilege, scheduled guest controls for Home Assistant.
+# Limited Access Dashboard for Home Assistant
 
-HA Guest Portal gives a child, contractor, cleaner, sitter, Airbnb/Vrbo guest,
-or visitor a small mobile interface containing only the controls you explicitly
-delegate. It does not expose a Home Assistant login, dashboard, token, entity
-registry, search, history, or settings.
+Give someone the controls they need without giving them access to your full
+Home Assistant system.
 
-> **Project status:** early MVP. Test on non-critical devices before production.
-> Do not use it for locks, gates, garage doors, alarms, heaters, or other safety-
-> critical controls without an independent security review and physical failsafes.
+Limited Access Dashboard creates a separate, mobile-friendly page for a child,
+contractor, cleaner, sitter, landscaper, Airbnb/Vrbo guest, or visitor. You
+choose what appears and when it can be used. The person using it cannot edit the
+dashboard, browse your devices, or open your Home Assistant settings.
 
-## Why this exists
+## What it does
 
-A dedicated HA dashboard and Kiosk Mode can make a guest interface look limited,
-but visual hiding is not authorization. This portal uses a smaller boundary:
+- Uses a separate username and password—not a Home Assistant account.
+- Is set up visually in Home Assistant; no YAML is required.
+- Supports a separate dashboard for each person or purpose.
+- Shows only the controls you choose.
+- Uses familiar Home Assistant-style cards on phones and computers.
+- Works remotely through your Home Assistant Cloud address.
+- Can restrict access to certain dates and hours.
+- Automatically stops each sprinkler test after a set time.
+- Provides a **Stop all water** button.
+- Records sign-ins and commands for the homeowner.
 
-1. The owner declares fixed actions on the server.
-2. An account receives a profile containing specific action IDs.
-3. Date ranges and weekly schedules are enforced on every request.
-4. The server calls a local-only HA webhook with a fixed payload.
-5. HA independently validates the request and applies physical safety rules.
+The guest cannot see Home Assistant dashboards, history, settings, searches,
+automations, or other devices.
 
-The browser can never submit an entity ID, service name, webhook URL, or custom
-payload.
+## Example uses
 
-## Included access patterns
+- Let a landscaper test sprinkler zones for five minutes at a time.
+- Give a cleaner access to selected lights during a weekly visit.
+- Give a child a simple dashboard containing approved household controls.
+- Give a rental guest a dashboard that expires at checkout.
+- Give a visitor temporary access that can be removed immediately.
 
-- **Child:** persistent login, selected household controls, optional daily hours.
-- **Contractor/cleaner:** selected controls during recurring work windows.
-- **Landscaper:** bounded sprinkler tests with one zone at a time and auto-stop.
-- **Airbnb/Vrbo guest:** reservation-specific credentials with check-in/check-out
-  activation timestamps.
-- **Visitor:** a narrow account that can be deleted immediately after use.
+You can add lights, switches, buttons, scenes, scripts, input booleans, sensors,
+binary sensors, and climate entities. Sensors and climate entities are shown as
+read-only information. Sprinkler switches can be marked as timed zones.
 
-The MVP uses manually configured reservation dates. Read-only iCalendar import
-for Airbnb/Vrbo is planned after the authentication and revocation model matures.
+## Install with HACS
 
-## Architecture
+Until this project is listed in the main HACS catalog, add it as a custom
+repository:
+
+1. Open **HACS** in Home Assistant.
+2. Select **Integrations**.
+3. Open the three-dot menu and choose **Custom repositories**.
+4. Add `https://github.com/endoftheline818/ha-limited-access-dashboard`.
+5. Choose **Integration** as the type.
+6. Find **Limited Access Dashboard** and select **Download**.
+7. Restart Home Assistant.
+
+## Create a limited dashboard
+
+1. Open **Settings → Devices & services**.
+2. Select **Add integration**.
+3. Search for **Limited Access Dashboard**.
+4. Choose the dashboard name and its short web-address name.
+5. Create a separate username and password for the guest.
+6. Select exactly which Home Assistant entities should appear.
+7. Choose an expiration date or an allowed weekly schedule if needed.
+
+To create another dashboard, add the integration again. To change an existing
+one, select **Configure** on its integration card.
+
+Passwords must contain at least 12 characters. They are stored as secure
+Argon2 hashes and are never shown again. Leaving the password box blank while
+editing keeps the existing password.
+
+## Open and share the dashboard
+
+Local address:
 
 ```text
-Guest browser
-    │ HTTPS, username/password, CSRF-protected session
-    ▼
-HA Guest Portal
-    │ fixed server-side payload to an allowlisted HA host
-    ▼
-Local-only Home Assistant webhook
-    │ HA-side allowlist, timer, interlock, audit/notification
-    ▼
-Selected device or helper
+http://homeassistant.local:8123/limited-access-dashboard/your-web-address-name
 ```
 
-No Home Assistant long-lived access token is required.
+For remote access, add the same path to your Home Assistant Cloud address:
 
-## Quick start
-
-1. Copy `config.example.yml` to `config.yml`.
-2. Copy the relevant package under `examples/home-assistant/` into HA, replace
-   the example entities, and generate a unique webhook ID in `secrets.yaml`.
-3. Generate each password hash:
-
-   ```shell
-   pip install -e .
-   ha-guest-portal hash-password
-   ```
-
-4. Put password hashes and webhook IDs in `.env`. Do not put them in `config.yml`.
-   Start from `.env.example`; do not commit the resulting `.env` file.
-5. Validate:
-
-   ```shell
-   ha-guest-portal check-config config.yml
-   ```
-
-6. Start the container and proxy it through HTTPS:
-
-   ```shell
-   docker compose up -d --build
-   ```
-
-   A minimal Caddy example is in `examples/Caddyfile`.
-
-   The Compose defaults bind to `127.0.0.1:8787`. Set `PORTAL_BIND_IP` and
-   `PORTAL_PORT` in `.env` only when you intentionally need a different bind.
-
-## Configuration model
-
-- `actions` define immutable names, webhook destinations, and JSON payloads.
-- `profiles` select action IDs and optional weekly time windows.
-- `accounts` select one profile and may add absolute activation/expiry timestamps.
-- `allowed_webhook_hosts` prevents a configuration mistake from targeting an
-  unexpected host.
-
-All absolute timestamps must include a UTC offset. Weekly schedules use the
-IANA timezone declared under `app.timezone`. Overnight windows such as
-`22:00-02:00` are supported.
-
-## Security checklist
-
-- Keep every HA webhook `local_only: true`.
-- Use random webhook IDs and treat them like passwords.
-- Put secrets only in environment variables.
-- Terminate HTTPS at Caddy, NGINX, or another maintained reverse proxy.
-- Bind the portal port to loopback or a private container network.
-- Keep destructive and access-control devices out of guest profiles.
-- Implement auto-off/interlock rules inside HA, not only in the portal.
-- Revoke or remove rental and contractor accounts promptly.
-- Review `data/portal.db` audit entries after guest access.
-
-See [SECURITY.md](SECURITY.md) before exposing the portal outside the LAN.
-
-## Development
-
-```shell
-python -m venv .venv
-.venv/Scripts/pip install -e ".[dev]"  # Windows
-.venv/Scripts/ruff check .
-.venv/Scripts/pytest -q
+```text
+https://your-address.ui.nabu.casa/limited-access-dashboard/your-web-address-name
 ```
 
-## Roadmap
+If you have only one limited dashboard, the shorter
+`/limited-access-dashboard` address redirects to it automatically. Share the
+address and the separate dashboard credentials with the person who needs
+access. Do not share your Home Assistant account.
 
-- Admin UI for creating and revoking accounts without editing YAML.
-- Hashed, single-use invitation links as an alternative to passwords.
-- Read-only Airbnb/Vrbo iCalendar import with explicit approval before account
-  creation.
-- Home Assistant notifications for successful and denied commands.
-- Docker image publishing, signed releases, SBOMs, and dependency scanning.
-- Optional live state through a separately scoped transport; no broad HA token.
+The page does not expose a Home Assistant access token. Every displayed entity
+and every allowed action is checked on the server against the choices made by
+the administrator.
+
+## Safety
+
+This is a community project. Test it with non-critical devices first.
+
+Do not use it for locks, gates, garage doors, alarms, heaters, or other
+safety-critical controls. Keep automatic shutoff and other physical safety
+rules inside Home Assistant itself.
+
+See [SECURITY.md](SECURITY.md) before exposing a dashboard outside your home.
+
+## What is planned
+
+- More card layouts and entity types.
+- Carefully sandboxed support for selected Lovelace and HACS cards. Arbitrary
+  custom cards are not loaded today because they normally expect a full Home
+  Assistant login and API access.
+- Reusable access profiles.
+- Single-use invitation links.
+- Optional Airbnb/Vrbo calendar dates.
+- Home Assistant notifications for sign-ins and commands.
+
+## Advanced and developer information
+
+The repository also contains an earlier standalone Docker version for advanced
+users and contributors. See [Advanced setup and development](docs/ADVANCED.md).
 
 ## License
 

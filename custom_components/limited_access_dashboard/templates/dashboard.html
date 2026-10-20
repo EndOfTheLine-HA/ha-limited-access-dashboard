@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block content %}
+  <header class="ha-header">
+    <div>
+      <p class="eyebrow">Limited access</p>
+      <h1>{{ title }}</h1>
+      <p class="lede">Welcome, {{ account.display_name }}</p>
+    </div>
+    <form method="post" action="{{ base_path }}/logout">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button type="submit" class="icon-button" aria-label="Sign out">Sign out</button>
+    </form>
+  </header>
+
+  {% if result == 'success' %}
+    <div class="notice success" role="status">The command was sent successfully.</div>
+  {% elif result == 'error' %}
+    <div class="notice error" role="alert">The command failed. Contact the homeowner.</div>
+  {% elif result == 'denied' %}
+    <div class="notice error" role="alert">That control is not permitted.</div>
+  {% elif result == 'rate_limited' %}
+    <div class="notice" role="status">Please wait a moment before trying another control.</div>
+  {% endif %}
+
+  <div id="availability" class="notice error{% if available %} hidden{% endif %}" role="alert">{{ reason }}</div>
+
+  <section class="lovelace-grid" aria-label="Available controls" data-state-url="{{ base_path }}/api/state">
+    {% for card in cards %}
+      <article class="ha-card{% if card.active %} active{% endif %}{% if not card.available %} unavailable{% endif %}" data-entity-id="{{ card.entity_id }}">
+        <div class="card-copy">
+          <span class="state-icon" aria-hidden="true">{{ card.icon }}</span>
+          <div class="card-text">
+            <h2>{{ card.name }}</h2>
+            <p class="state-value">{{ card.state }}{% if card.unit %} {{ card.unit }}{% endif %}</p>
+            {% if card.card_type == 'sprinkler' %}<p class="card-note">Runs for {{ duration_minutes }} minutes</p>{% endif %}
+          </div>
+        </div>
+        {% if card.action == 'sprinkler' %}
+          <a class="tile-action{% if not available %} disabled{% endif %}" href="{{ base_path }}/confirm/{{ card.entity_id }}">Run</a>
+        {% elif card.action %}
+          <form method="post" action="{{ base_path }}/actions/{{ card.entity_id }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button type="submit" class="tile-action"{% if not available or not card.available %} disabled{% endif %}>
+              {% if card.action == 'toggle' %}Toggle{% elif card.action == 'press' %}Press{% else %}Run{% endif %}
+            </button>
+          </form>
+        {% endif %}
+      </article>
+    {% endfor %}
+  </section>
+
+  {% if has_sprinklers %}
+    <form method="post" action="{{ base_path }}/actions/stop-all" class="stop-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button type="submit" class="stop-button">Stop all water</button>
+    </form>
+  {% endif %}
+
+  <p class="footnote">This dashboard is read-only except for the controls approved by the homeowner.</p>
+{% endblock %}

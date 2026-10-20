@@ -9,7 +9,7 @@ from .security import hash_password
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(prog="ha-guest-portal")
+    parser = argparse.ArgumentParser(prog="ha-limited-access-dashboard")
     subparsers = parser.add_subparsers(dest="command", required=True)
     subparsers.add_parser("hash-password", help="Generate an Argon2 password hash")
     check = subparsers.add_parser("check-config", help="Validate configuration and exit")

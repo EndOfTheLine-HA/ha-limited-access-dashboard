@@ -1,15 +1,15 @@
 # Example Home Assistant package. Replace every switch entity and create your own
-# random webhook ID in secrets.yaml. Keep local_only enabled: the portal, not the
+# random webhook ID in secrets.yaml. Keep local_only enabled: the dashboard, not the
 # public internet, calls this webhook over the LAN.
 
 automation:
-  - alias: "Guest portal - bounded sprinkler control"
-    id: guest_portal_bounded_sprinkler_control
+  - alias: "Limited Access Dashboard - bounded sprinkler control"
+    id: limited_access_dashboard_bounded_sprinkler_control
     mode: restart
     max_exceeded: silent
     triggers:
       - trigger: webhook
-        webhook_id: !secret guest_portal_sprinkler_webhook_id
+        webhook_id: !secret limited_access_dashboard_sprinkler_webhook_id
         allowed_methods:
           - POST
         local_only: true

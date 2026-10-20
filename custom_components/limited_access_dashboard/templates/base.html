@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#11131a">
+    <title>{{ title }}</title>
+    <link rel="stylesheet" href="{{ base_path }}/static/app.css">
+    <script src="{{ base_path }}/static/app.js" defer></script>
+  </head>
+  <body>
+    <main class="shell">
+      {% block content %}{% endblock %}
+    </main>
+  </body>
+</html>

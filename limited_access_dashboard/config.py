@@ -13,7 +13,7 @@ import yaml
 
 
 class ConfigError(ValueError):
-    """Raised when portal configuration is unsafe or invalid."""
+    """Raised when dashboard configuration is unsafe or invalid."""
 
 
 _ENV_PATTERN = re.compile(r"\$\{([A-Z][A-Z0-9_]*)\}")
@@ -99,7 +99,7 @@ class WeeklySchedule:
 
 
 @dataclass(frozen=True)
-class PortalAction:
+class DashboardAction:
     action_id: str
     name: str
     description: str
@@ -143,7 +143,7 @@ class Settings:
     database_path: Path
     request_timeout_seconds: float
     allowed_webhook_hosts: frozenset[str]
-    actions: dict[str, PortalAction]
+    actions: dict[str, DashboardAction]
     profiles: dict[str, Profile]
     accounts: dict[str, Account]
 
@@ -173,7 +173,7 @@ def load_settings(path: str | Path) -> Settings:
     if not allowed_hosts:
         raise ConfigError("app.allowed_webhook_hosts must contain at least one HA host")
 
-    actions: dict[str, PortalAction] = {}
+    actions: dict[str, DashboardAction] = {}
     for action_id, item in (raw.get("actions") or {}).items():
         action_id = str(action_id)
         url = str(item.get("webhook_url", ""))
@@ -184,7 +184,7 @@ def load_settings(path: str | Path) -> Settings:
             raise ConfigError(f"Action {action_id} targets a host outside allowed_webhook_hosts")
         if not parsed.path.startswith("/api/webhook/"):
             raise ConfigError(f"Action {action_id} must target /api/webhook/<id>")
-        actions[action_id] = PortalAction(
+        actions[action_id] = DashboardAction(
             action_id=action_id,
             name=str(item.get("name", action_id.replace("_", " ").title())),
             description=str(item.get("description", "")),
@@ -240,11 +240,11 @@ def load_settings(path: str | Path) -> Settings:
     if session_hours < 1 or session_hours > 168:
         raise ConfigError("app.session_hours must be between 1 and 168")
     return Settings(
-        title=str(app.get("title", "Home Guest Access")),
+        title=str(app.get("title", "Limited Access Dashboard")),
         timezone=timezone,
         session_hours=session_hours,
         cookie_secure=bool(app.get("cookie_secure", True)),
-        database_path=Path(str(app.get("database_path", "data/portal.db"))),
+        database_path=Path(str(app.get("database_path", "data/dashboard.db"))),
         request_timeout_seconds=float(app.get("request_timeout_seconds", 5)),
         allowed_webhook_hosts=allowed_hosts,
         actions=actions,
