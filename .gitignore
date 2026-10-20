@@ -11,4 +11,12 @@ dist/
 data/
 config.yml
 .env
+.env.*
+!.env.example
+secrets.yaml
+*.db-*
+*.sqlite*
+*.backup
+*.bak
+.storage/
 
