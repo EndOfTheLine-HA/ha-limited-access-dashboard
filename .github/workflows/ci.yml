@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.12", "3.13"]
+        python-version: ["3.12", "3.13", "3.14"]
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -25,4 +25,13 @@ jobs:
       - run: ruff format --check .
       - run: pytest -q
       - run: pip-audit --skip-editable
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: docker build -t limited-access-dashboard:test .
+      - name: Test installed application in Python 3.14 container
+        run: |
+          docker run --rm --user root --entrypoint sh -v "$PWD/tests:/tests:ro" limited-access-dashboard:test -c 'pip install pytest httpx && python -m pytest /tests -q'
 
