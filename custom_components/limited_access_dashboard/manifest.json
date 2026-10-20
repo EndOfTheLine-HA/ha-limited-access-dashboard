@@ -2,7 +2,6 @@
   "domain": "limited_access_dashboard",
   "name": "Limited Access Dashboard",
   "after_dependencies": ["rachio"],
-  "categories": ["helpers"],
   "codeowners": ["@endoftheline818"],
   "config_flow": true,
   "dependencies": ["http"],
