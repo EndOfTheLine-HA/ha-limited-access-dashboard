@@ -31,6 +31,7 @@ CONF_SESSION_HOURS = "session_hours"
 CONF_ACTIVE_FROM = "active_from"
 CONF_EXPIRES_AT = "expires_at"
 CONF_ENTITIES = "entities"
+CONF_ENABLE_SPRINKLERS = "enable_sprinklers"
 CONF_SPRINKLER_ENTITIES = "sprinkler_entities"
 CONF_DURATION_MINUTES = "duration_minutes"
 CONF_ALWAYS_ACCESS = "always_access"
@@ -96,19 +97,37 @@ def _account_schema(current: dict[str, Any], *, password_required: bool) -> vol.
 def _cards_schema(current: dict[str, Any]) -> vol.Schema:
     return vol.Schema(
         {
-            vol.Required(
+            vol.Optional(
                 CONF_ENTITIES,
-                description={"suggested_value": current.get(CONF_ENTITIES, [])},
+                description={
+                    "suggested_value": [
+                        entity
+                        for entity in current.get(CONF_ENTITIES, [])
+                        if entity not in current.get(CONF_SPRINKLER_ENTITIES, [])
+                    ]
+                },
             ): selector.EntitySelector(
                 selector.EntitySelectorConfig(
                     domain=list(SUPPORTED_DOMAINS), multiple=True, reorder=True
                 )
             ),
+            _suggested(
+                CONF_ENABLE_SPRINKLERS, current, bool(current.get(CONF_SPRINKLER_ENTITIES))
+            ): selector.BooleanSelector(),
+        }
+    )
+
+
+def _sprinklers_schema(current: dict[str, Any]) -> vol.Schema:
+    return vol.Schema(
+        {
             vol.Optional(
                 CONF_SPRINKLER_ENTITIES,
                 description={"suggested_value": current.get(CONF_SPRINKLER_ENTITIES, [])},
             ): selector.EntitySelector(
-                selector.EntitySelectorConfig(domain="switch", multiple=True, reorder=True)
+                selector.EntitySelectorConfig(
+                    domain="switch", integration="rachio", multiple=True, reorder=True
+                )
             ),
             _suggested(
                 CONF_DURATION_MINUTES, current, DEFAULT_DURATION_MINUTES
@@ -183,7 +202,24 @@ def _build_schedule(user_input: dict[str, Any]) -> str | dict[str, list[str]]:
     return {day: [f"{start}-{end}"] for day in user_input.get(CONF_WEEKDAYS, [])}
 
 
-class LimitedAccessDashboardConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
+class SprinklerStep:
+    async def async_step_sprinklers(self, user_input=None):
+        current = getattr(self, "_current", self._data)
+        errors = {}
+        if user_input is not None:
+            zones = list(dict.fromkeys(user_input.get(CONF_SPRINKLER_ENTITIES, [])))
+            if not zones:
+                errors[CONF_SPRINKLER_ENTITIES] = "entities_required"
+            else:
+                self._data.update(user_input)
+                self._data[CONF_SPRINKLER_ENTITIES] = zones
+                return await self.async_step_schedule()
+        return self.async_show_form(
+            step_id="sprinklers", data_schema=_sprinklers_schema(current), errors=errors
+        )
+
+
+class LimitedAccessDashboardConfigFlow(SprinklerStep, config_entries.ConfigFlow, domain=DOMAIN):
     VERSION = 1
 
     def __init__(self) -> None:
@@ -223,7 +259,7 @@ class LimitedAccessDashboardConfigFlow(config_entries.ConfigFlow, domain=DOMAIN)
             password = str(user_input[CONF_PASSWORD])
             if len(username) < 3:
                 errors[CONF_USERNAME] = "invalid_username"
-            elif len(password) < 12:
+            elif len(password) < 8:
                 errors[CONF_PASSWORD] = "password_too_short"
             else:
                 normalized = dict(user_input)
@@ -245,13 +281,15 @@ class LimitedAccessDashboardConfigFlow(config_entries.ConfigFlow, domain=DOMAIN)
         errors: dict[str, str] = {}
         if user_input is not None:
             entities = list(user_input.get(CONF_ENTITIES, []))
-            sprinklers = list(user_input.get(CONF_SPRINKLER_ENTITIES, []))
-            if not entities and not sprinklers:
+            enabled = bool(user_input.get(CONF_ENABLE_SPRINKLERS, False))
+            if not entities and not enabled:
                 errors[CONF_ENTITIES] = "entities_required"
             else:
-                user_input[CONF_ENTITIES] = list(dict.fromkeys([*entities, *sprinklers]))
-                user_input[CONF_SPRINKLER_ENTITIES] = list(dict.fromkeys(sprinklers))
+                user_input[CONF_ENTITIES] = list(dict.fromkeys(entities))
                 self._data.update(user_input)
+                if enabled:
+                    return await self.async_step_sprinklers()
+                self._data[CONF_SPRINKLER_ENTITIES] = []
                 return await self.async_step_schedule()
         return self.async_show_form(
             step_id="cards",
@@ -286,7 +324,7 @@ class LimitedAccessDashboardConfigFlow(config_entries.ConfigFlow, domain=DOMAIN)
         return self.async_create_entry(title=data[CONF_TITLE], data=data)
 
 
-class LimitedAccessDashboardOptionsFlow(config_entries.OptionsFlowWithReload):
+class LimitedAccessDashboardOptionsFlow(SprinklerStep, config_entries.OptionsFlowWithReload):
     def __init__(self) -> None:
         self._data: dict[str, Any] = {}
 
@@ -326,7 +364,7 @@ class LimitedAccessDashboardOptionsFlow(config_entries.OptionsFlowWithReload):
             password = str(normalized.pop(CONF_PASSWORD, ""))
             if len(username) < 3:
                 errors[CONF_USERNAME] = "invalid_username"
-            elif password and len(password) < 12:
+            elif password and len(password) < 8:
                 errors[CONF_PASSWORD] = "password_too_short"
             else:
                 normalized[CONF_USERNAME] = username
@@ -350,13 +388,15 @@ class LimitedAccessDashboardOptionsFlow(config_entries.OptionsFlowWithReload):
         errors: dict[str, str] = {}
         if user_input is not None:
             entities = list(user_input.get(CONF_ENTITIES, []))
-            sprinklers = list(user_input.get(CONF_SPRINKLER_ENTITIES, []))
-            if not entities and not sprinklers:
+            enabled = bool(user_input.get(CONF_ENABLE_SPRINKLERS, False))
+            if not entities and not enabled:
                 errors[CONF_ENTITIES] = "entities_required"
             else:
-                user_input[CONF_ENTITIES] = list(dict.fromkeys([*entities, *sprinklers]))
-                user_input[CONF_SPRINKLER_ENTITIES] = list(dict.fromkeys(sprinklers))
+                user_input[CONF_ENTITIES] = list(dict.fromkeys(entities))
                 self._data.update(user_input)
+                if enabled:
+                    return await self.async_step_sprinklers()
+                self._data[CONF_SPRINKLER_ENTITIES] = []
                 return await self.async_step_schedule()
         return self.async_show_form(
             step_id="cards",

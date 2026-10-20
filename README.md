@@ -66,7 +66,7 @@ repository:
 To create another dashboard, add the integration again. To change an existing
 one, select **Configure** on its integration card.
 
-Passwords must contain at least 12 characters. They are stored as secure
+Passwords must contain at least 8 characters. They are stored as secure
 Argon2 hashes and are never shown again. Leaving the password box blank while
 editing keeps the existing password.
 
@@ -125,3 +125,4 @@ MIT
 
 This community project is not affiliated with or endorsed by the Home Assistant
 project, Nabu Casa, Airbnb, or Vrbo.
+

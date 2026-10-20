@@ -13,8 +13,8 @@ _DUMMY_HASH = _PASSWORD_HASHER.hash("not-the-user-password")
 
 
 def hash_password(password: str) -> str:
-    if len(password) < 12:
-        raise ValueError("Password must contain at least 12 characters")
+    if len(password) < 8:
+        raise ValueError("Password must contain at least 8 characters")
     return _PASSWORD_HASHER.hash(password)
 
 
