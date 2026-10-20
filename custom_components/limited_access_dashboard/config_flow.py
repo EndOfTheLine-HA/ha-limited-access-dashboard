@@ -182,10 +182,19 @@ def _schedule_fields(current: dict[str, Any]) -> dict[str, Any]:
 
 
 def _schedule_schema(current: dict[str, Any]) -> vol.Schema:
+    return vol.Schema(
+        {
+            _suggested(
+                CONF_ALWAYS_ACCESS, _schedule_fields(current), True
+            ): selector.BooleanSelector()
+        }
+    )
+
+
+def _schedule_window_schema(current: dict[str, Any]) -> vol.Schema:
     values = _schedule_fields(current)
     return vol.Schema(
         {
-            _suggested(CONF_ALWAYS_ACCESS, values, True): selector.BooleanSelector(),
             _suggested(CONF_WEEKDAYS, values, list(DAYS)): selector.SelectSelector(
                 selector.SelectSelectorConfig(
                     options=list(DAYS),
@@ -217,6 +226,34 @@ def _build_schedule(user_input: dict[str, Any]) -> str | dict[str, list[str]]:
 
 
 class SprinklerStep:
+    async def async_step_schedule(self, user_input=None):
+        current = getattr(self, "_current", self._data)
+        if user_input is not None:
+            if not user_input[CONF_ALWAYS_ACCESS]:
+                return await self.async_step_schedule_window()
+            self._data[CONF_SCHEDULE] = "always"
+            self._data.setdefault("timezone", self.hass.config.time_zone)
+            return await self.async_step_share()
+        return self.async_show_form(step_id="schedule", data_schema=_schedule_schema(current))
+
+    async def async_step_schedule_window(self, user_input=None):
+        current = getattr(self, "_current", self._data)
+        errors = {}
+        if user_input is not None:
+            if not user_input.get(CONF_WEEKDAYS):
+                errors[CONF_WEEKDAYS] = "weekdays_required"
+            else:
+                self._data[CONF_SCHEDULE] = _build_schedule(
+                    {**user_input, CONF_ALWAYS_ACCESS: False}
+                )
+                self._data.setdefault("timezone", self.hass.config.time_zone)
+                return await self.async_step_share()
+        return self.async_show_form(
+            step_id="schedule_window",
+            data_schema=_schedule_window_schema(current),
+            errors=errors,
+        )
+
     async def async_step_entity_filter(self, user_input=None):
         if user_input is not None:
             self._entity_type = user_input["entity_type"]
@@ -361,23 +398,6 @@ class LimitedAccessDashboardConfigFlow(SprinklerStep, config_entries.ConfigFlow,
             errors=errors,
         )
 
-    async def async_step_schedule(
-        self, user_input: dict[str, Any] | None = None
-    ) -> ConfigFlowResult:
-        errors: dict[str, str] = {}
-        if user_input is not None:
-            if not user_input[CONF_ALWAYS_ACCESS] and not user_input.get(CONF_WEEKDAYS):
-                errors[CONF_WEEKDAYS] = "weekdays_required"
-            else:
-                self._data[CONF_SCHEDULE] = _build_schedule(user_input)
-                self._data["timezone"] = self.hass.config.time_zone
-                return await self.async_step_share()
-        return self.async_show_form(
-            step_id="schedule",
-            data_schema=_schedule_schema(self._data),
-            errors=errors,
-        )
-
     async def async_step_import(self, user_input: dict[str, Any]) -> ConfigFlowResult:
         try:
             data = legacy_to_entry(user_input, default_timezone=self.hass.config.time_zone)
@@ -449,20 +469,4 @@ class LimitedAccessDashboardOptionsFlow(SprinklerStep, config_entries.OptionsFlo
             data_schema=_account_schema(self._current, password_required=False),
             errors=errors,
             description_placeholders={"password_note": "Leave blank to keep the current password."},
-        )
-
-    async def async_step_schedule(
-        self, user_input: dict[str, Any] | None = None
-    ) -> ConfigFlowResult:
-        errors: dict[str, str] = {}
-        if user_input is not None:
-            if not user_input[CONF_ALWAYS_ACCESS] and not user_input.get(CONF_WEEKDAYS):
-                errors[CONF_WEEKDAYS] = "weekdays_required"
-            else:
-                self._data[CONF_SCHEDULE] = _build_schedule(user_input)
-                return await self.async_step_share()
-        return self.async_show_form(
-            step_id="schedule",
-            data_schema=_schedule_schema(self._current),
-            errors=errors,
         )

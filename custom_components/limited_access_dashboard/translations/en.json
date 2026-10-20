@@ -36,12 +36,9 @@
       },
       "schedule": {
         "title": "Choose when access works",
-        "description": "For a daily window, select the allowed weekdays and hours.",
+        "description": "Leave this on for access at any time. Turn it off and press Submit to choose allowed weekdays and hours.",
         "data": {
-          "always_access": "Allow access at any time",
-          "weekdays": "Allowed weekdays",
-          "start_time": "Start time",
-          "end_time": "End time"
+          "always_access": "Allow access at any time"
         }
       },
       "sprinklers": {
@@ -61,6 +58,15 @@
       "share": {
         "title": "Your dashboard link",
         "description": "Save to finish, then open [your dashboard]({dashboard_url}).\n\n**Share this address:** {dashboard_url}\n\n**Guest username:** {username}\n\nGive the guest this link and the separate dashboard password you chose. They do not need a Home Assistant account. For access away from home, use your Home Assistant Cloud or other HTTPS remote address. Local addresses work only on your home network.\n\nYou can find this link again in the dashboard device details (Visit), or by opening Configure on this integration entry."
+      },
+      "schedule_window": {
+        "data": {
+          "weekdays": "Allowed weekdays",
+          "start_time": "Start time",
+          "end_time": "End time"
+        },
+        "description": "Access is limited to these weekdays and times.",
+        "title": "Choose allowed days and hours"
       }
     },
     "error": {
@@ -111,12 +117,9 @@
       },
       "schedule": {
         "title": "Access schedule",
-        "description": "Changes take effect after this screen is saved.",
+        "description": "Leave this on for access at any time. Turn it off and press Submit to choose allowed weekdays and hours.",
         "data": {
-          "always_access": "Allow access at any time",
-          "weekdays": "Allowed weekdays",
-          "start_time": "Start time",
-          "end_time": "End time"
+          "always_access": "Allow access at any time"
         }
       },
       "sprinklers": {
@@ -136,6 +139,15 @@
       "share": {
         "title": "Your dashboard link",
         "description": "Save to finish, then open [your dashboard]({dashboard_url}).\n\n**Share this address:** {dashboard_url}\n\n**Guest username:** {username}\n\nGive the guest this link and the separate dashboard password you chose. They do not need a Home Assistant account. For access away from home, use your Home Assistant Cloud or other HTTPS remote address. Local addresses work only on your home network.\n\nYou can find this link again in the dashboard device details (Visit), or by opening Configure on this integration entry."
+      },
+      "schedule_window": {
+        "data": {
+          "weekdays": "Allowed weekdays",
+          "start_time": "Start time",
+          "end_time": "End time"
+        },
+        "description": "Access is limited to these weekdays and times.",
+        "title": "Choose allowed days and hours"
       }
     },
     "error": {

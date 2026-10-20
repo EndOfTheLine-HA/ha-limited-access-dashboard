@@ -287,6 +287,41 @@ async def check_media():
 
 
 async def main():
+    for cls in (flow.LimitedAccessDashboardConfigFlow, flow.LimitedAccessDashboardOptionsFlow):
+        item = cls()
+        item.handler = "test"
+        saved = {"schedule": {"monday": ["09:00-17:00"]}}
+        item.hass = SimpleNamespace(
+            config=SimpleNamespace(time_zone="UTC"),
+            config_entries=SimpleNamespace(
+                async_get_known_entry=lambda _, saved=saved: SimpleNamespace(data=saved, options={})
+            ),
+        )
+        item.async_step_share = AsyncMock(return_value={"step_id": "share"})
+        result = await item.async_step_schedule()
+        assert set(result["data_schema"].schema) == {"always_access"}
+        result = await item.async_step_schedule({"always_access": False})
+        assert result["step_id"] == "schedule_window"
+        assert set(result["data_schema"].schema) == {"weekdays", "start_time", "end_time"}
+        if cls is flow.LimitedAccessDashboardOptionsFlow:
+            values = {
+                key.schema: key.description["suggested_value"]
+                for key in result["data_schema"].schema
+            }
+            assert values["weekdays"] == ["monday"]
+            assert values["start_time"] == "09:00:00"
+        result = await item.async_step_schedule_window(
+            {"weekdays": [], "start_time": "09:00:00", "end_time": "17:00:00"}
+        )
+        assert result["errors"] == {"weekdays": "weekdays_required"}
+        result = await item.async_step_schedule_window(
+            {"weekdays": ["tuesday"], "start_time": "22:00:00", "end_time": "06:00:00"}
+        )
+        assert result["step_id"] == "share"
+        assert item._data["schedule"] == {"tuesday": ["22:00-06:00"]}
+        result = await item.async_step_schedule({"always_access": True})
+        assert result["step_id"] == "share"
+        assert item._data["schedule"] == "always"
     await check_flows()
     await check_media()
     print(
