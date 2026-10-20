@@ -48,7 +48,7 @@ repository:
 1. Open **HACS** in Home Assistant.
 2. Select **Integrations**.
 3. Open the three-dot menu and choose **Custom repositories**.
-4. Add `https://github.com/endoftheline818/ha-limited-access-dashboard`.
+4. Add `https://github.com/EndOfTheLine-HA/ha-limited-access-dashboard`.
 5. Choose **Integration** as the type.
 6. Find **Limited Access Dashboard** and select **Download**.
 7. Restart Home Assistant.
