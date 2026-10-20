@@ -52,6 +52,10 @@ input:focus { outline: 2px solid var(--ha-blue); outline-offset: 2px; }
 .stop-form { margin-top: 18px; }
 .stop-button { width: 100%; padding: 14px 18px; border: 1px solid #a14747; border-radius: 12px; background: #402126; color: #ffb9b9; font-weight: 700; }
 .footnote { margin-top: 22px; text-align: center; font-size: .8rem; }
+.media-card { flex-direction: column; align-items: stretch; }
+.media-controls { display: flex; flex-wrap: wrap; gap: 8px; }
+.media-controls form { display: flex; align-items: end; gap: 8px; }
+.media-controls input[type="number"] { max-width: 110px; padding: 8px; }
 
 @media (max-width: 560px) {
   .shell { width: min(100% - 20px, 980px); padding-top: max(16px, env(safe-area-inset-top)); }

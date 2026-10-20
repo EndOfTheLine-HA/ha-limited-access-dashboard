@@ -26,7 +26,7 @@
 
   <section class="lovelace-grid" aria-label="Available controls" data-state-url="{{ base_path }}/api/state">
     {% for card in cards %}
-      <article class="ha-card{% if card.active %} active{% endif %}{% if not card.available %} unavailable{% endif %}" data-entity-id="{{ card.entity_id }}">
+      <article class="ha-card{% if card.action == 'media' %} media-card{% endif %}{% if card.active %} active{% endif %}{% if not card.available %} unavailable{% endif %}" data-entity-id="{{ card.entity_id }}">
         <div class="card-copy">
           <span class="state-icon" aria-hidden="true">{{ card.icon }}</span>
           <div class="card-text">
@@ -37,6 +37,21 @@
         </div>
         {% if card.action == 'sprinkler' %}
           <a class="tile-action{% if not available %} disabled{% endif %}" href="{{ base_path }}/confirm/{{ card.entity_id }}">Run</a>
+        {% elif card.action == 'media' %}
+          <div class="media-controls">
+          {% for control in card.media_controls %}
+            <form method="post" action="{{ base_path }}/actions/{{ card.entity_id }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <input type="hidden" name="media_action" value="{{ control.action }}">
+              {% if control.action == 'volume_set' %}
+                <label>Volume (0–100)
+                  <input type="number" name="volume" min="0" max="100" step="1" value="{{ card.volume }}" required{% if not available or not card.available %} disabled{% endif %}>
+                </label>
+              {% endif %}
+              <button type="submit" class="tile-action" data-media-action="{{ control.action }}"{% if not available or not card.available %} disabled{% endif %}>{{ control.label }}</button>
+            </form>
+          {% endfor %}
+          </div>
         {% elif card.action %}
           <form method="post" action="{{ base_path }}/actions/{{ card.entity_id }}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">

@@ -27,10 +27,11 @@
       },
       "cards": {
         "title": "Choose dashboard cards",
-        "description": "Choose and reorder the entities this person can see and control.",
+        "description": "Add entities from {entity_type}. Selected entities stay on the dashboard when you change types. Remove or reorder them in Selected entities.",
         "data": {
-          "entities": "Entities to show",
-          "enable_sprinklers": "Enable timed sprinkler controls"
+          "entities": "Selected entities",
+          "add_entities": "Add entities from this type",
+          "choose_another_type": "Add another entity type before continuing"
         }
       },
       "schedule": {
@@ -45,11 +46,21 @@
       },
       "sprinklers": {
         "title": "Timed sprinkler controls",
-        "description": "Choose Rachio zone switches and a maximum run time.",
+        "description": "The selected Rachio zones use timed watering. Choose their run time; they cannot be started as ordinary switches.",
         "data": {
-          "sprinkler_entities": "Sprinkler zones",
           "duration_minutes": "Run time"
         }
+      },
+      "entity_filter": {
+        "data": {
+          "entity_type": "Entity type"
+        },
+        "description": "Choose a type to narrow the list. You can add more types without losing your selections. Plugs are switches marked as outlets in Home Assistant; other plugs are under Switches.",
+        "title": "Find entities by type"
+      },
+      "share": {
+        "title": "Your dashboard link",
+        "description": "Save to finish, then open [your dashboard]({dashboard_url}).\n\n**Share this address:** {dashboard_url}\n\n**Guest username:** {username}\n\nGive the guest this link and the separate dashboard password you chose. They do not need a Home Assistant account. For access away from home, use your Home Assistant Cloud or other HTTPS remote address. Local addresses work only on your home network.\n\nYou can find this link again in the dashboard device details (Visit), or by opening Configure on this integration entry."
       }
     },
     "error": {
@@ -58,7 +69,9 @@
       "password_too_short": "Use a password with at least 8 characters.",
       "entities_required": "Select at least one entity.",
       "weekdays_required": "Select at least one weekday.",
-      "slug_in_use": "Another dashboard already uses this web address name."
+      "slug_in_use": "Another dashboard already uses this web address name.",
+      "unsupported_entity": "This entity type is not supported.",
+      "unsupported_irrigation": "Choose individual Rachio zone switches, not controller, rain-delay, hose timer, or schedule switches."
     },
     "abort": {
       "already_configured": "A dashboard with this web address already exists.",
@@ -69,7 +82,7 @@
     "step": {
       "init": {
         "title": "Dashboard details",
-        "description": "Change the dashboard name or its web address.",
+        "description": "[Open this dashboard]({dashboard_url}) — share this link and the guest credentials. Change its name or address below.",
         "data": {
           "title": "Dashboard name",
           "slug": "Web address name"
@@ -89,10 +102,11 @@
       },
       "cards": {
         "title": "Dashboard cards",
-        "description": "Choose and reorder the entities this person can see and control.",
+        "description": "Add entities from {entity_type}. Selected entities stay on the dashboard when you change types. Remove or reorder them in Selected entities.",
         "data": {
-          "entities": "Entities to show",
-          "enable_sprinklers": "Enable timed sprinkler controls"
+          "entities": "Selected entities",
+          "add_entities": "Add entities from this type",
+          "choose_another_type": "Add another entity type before continuing"
         }
       },
       "schedule": {
@@ -107,11 +121,21 @@
       },
       "sprinklers": {
         "title": "Timed sprinkler controls",
-        "description": "Choose Rachio zone switches and a maximum run time.",
+        "description": "The selected Rachio zones use timed watering. Choose their run time; they cannot be started as ordinary switches.",
         "data": {
-          "sprinkler_entities": "Sprinkler zones",
           "duration_minutes": "Run time"
         }
+      },
+      "entity_filter": {
+        "data": {
+          "entity_type": "Entity type"
+        },
+        "description": "Choose a type to narrow the list. You can add more types without losing your selections. Plugs are switches marked as outlets in Home Assistant; other plugs are under Switches.",
+        "title": "Find entities by type"
+      },
+      "share": {
+        "title": "Your dashboard link",
+        "description": "Save to finish, then open [your dashboard]({dashboard_url}).\n\n**Share this address:** {dashboard_url}\n\n**Guest username:** {username}\n\nGive the guest this link and the separate dashboard password you chose. They do not need a Home Assistant account. For access away from home, use your Home Assistant Cloud or other HTTPS remote address. Local addresses work only on your home network.\n\nYou can find this link again in the dashboard device details (Visit), or by opening Configure on this integration entry."
       }
     },
     "error": {
@@ -120,7 +144,9 @@
       "password_too_short": "Use a password with at least 8 characters.",
       "entities_required": "Select at least one entity.",
       "weekdays_required": "Select at least one weekday.",
-      "slug_in_use": "Another dashboard already uses this web address name."
+      "slug_in_use": "Another dashboard already uses this web address name.",
+      "unsupported_entity": "This entity type is not supported.",
+      "unsupported_irrigation": "Choose individual Rachio zone switches, not controller, rain-delay, hose timer, or schedule switches."
     }
   }
 }

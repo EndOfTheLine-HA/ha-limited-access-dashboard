@@ -13,6 +13,8 @@ from homeassistant.core import HomeAssistant
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from .config import URL_ROOT, Account, DashboardCard, Settings
+from .media import action_data as media_action_data
+from .media import controls as media_controls
 from .security import RateLimiter, random_token, tokens_match, verify_password
 from .storage import Session, Store
 
@@ -26,6 +28,7 @@ _DOMAIN_ICONS = {
     "climate": "°",
     "input_boolean": "◉",
     "light": "◉",
+    "media_player": "♫",
     "scene": "◇",
     "script": "▶",
     "sensor": "◌",
@@ -127,7 +130,7 @@ class DashboardRuntime:
             name = str(state.attributes.get("friendly_name", name))
             state_value = str(state.state).replace("_", " ").title()
             unit = str(state.attributes.get("unit_of_measurement", ""))
-            active = state.state == "on"
+            active = state.state in {"on", "playing", "paused"}
         if card.card_type == "sprinkler":
             state_value = "Running" if active else "Off"
         return {
@@ -140,6 +143,10 @@ class DashboardRuntime:
             "action": card.action,
             "card_type": card.card_type,
             "icon": "≈" if card.card_type == "sprinkler" else _DOMAIN_ICONS.get(domain, "◉"),
+            "media_controls": media_controls(state) if domain == "media_player" else [],
+            "volume": round(float(state.attributes.get("volume_level", 0) or 0) * 100)
+            if state is not None and domain == "media_player"
+            else 0,
         }
 
     def cards(self) -> list[dict[str, Any]]:
@@ -168,7 +175,15 @@ class DashboardRuntime:
             blocking=True,
         )
 
-    async def call_card_action(self, card: DashboardCard) -> None:
+    async def call_card_action(self, card: DashboardCard, form=None) -> None:
+        if self.get_card(card.entity_id) != card:
+            raise ValueError("Entity is not allowlisted")
+        if card.action == "media":
+            form = form or {}
+            action = str(form.get("media_action", ""))
+            data = media_action_data(self.hass.states.get(card.entity_id), action, form)
+            await self.hass.services.async_call("media_player", action, data, blocking=True)
+            return
         if card.action == "sprinkler":
             await self.start_sprinkler(card)
             return
@@ -397,7 +412,16 @@ class ActionView(ManagedView):
         if not runtime.limiter.allow(f"action:{account.username}", limit=1, window_seconds=2):
             return web.HTTPSeeOther(location=runtime.url("?result=rate_limited"))
         try:
-            await runtime.call_card_action(card)
+            await runtime.call_card_action(card, form)
+        except ValueError:
+            await runtime.audit(
+                request,
+                username=account.username,
+                action_id=entity_id,
+                outcome="denied",
+                detail="invalid or unsupported action",
+            )
+            return web.HTTPSeeOther(location=runtime.url("?result=denied"))
         except Exception as exc:
             _LOGGER.exception("Limited Access Dashboard action %s failed", entity_id)
             await runtime.audit(

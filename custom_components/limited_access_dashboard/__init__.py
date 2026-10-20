@@ -6,10 +6,13 @@ from typing import Any
 import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.typing import ConfigType
 
 from .config import DOMAIN, DashboardConfigError, load_settings
+from .entities import is_sprinkler
 from .http import DashboardManager, DashboardRuntime, register_views
+from .links import dashboard_url
 from .storage import Store
 
 _LOGGER = logging.getLogger(__name__)
@@ -37,6 +40,14 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     raw = {**entry.data, **entry.options}
+    raw["sprinkler_entities"] = list(
+        dict.fromkeys(
+            [
+                *raw.get("sprinkler_entities", []),
+                *(entity for entity in raw.get("entities", []) if is_sprinkler(hass, entity)),
+            ]
+        )
+    )
     try:
         settings = load_settings(raw, default_timezone=hass.config.time_zone)
         store = await hass.async_add_executor_job(Store, settings.database_path)
@@ -54,6 +65,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     manager: DashboardManager = hass.data[DOMAIN]
     manager.add(runtime)
     entry.runtime_data = runtime
+    dr.async_get(hass).async_get_or_create(
+        config_entry_id=entry.entry_id,
+        identifiers={(DOMAIN, entry.entry_id)},
+        name=settings.title,
+        manufacturer="Limited Access Dashboard",
+        model="Guest dashboard",
+        entry_type=dr.DeviceEntryType.SERVICE,
+        configuration_url=(
+            url if (url := dashboard_url(hass, settings.slug)).startswith("http") else None
+        ),
+    )
     _LOGGER.info("Limited Access Dashboard registered at %s", settings.base_path)
     return True
 

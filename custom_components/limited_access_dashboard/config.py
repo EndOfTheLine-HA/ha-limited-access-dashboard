@@ -11,7 +11,15 @@ DOMAIN = "limited_access_dashboard"
 URL_ROOT = "/limited-access-dashboard"
 DEFAULT_SESSION_HOURS = 8
 DEFAULT_DURATION_MINUTES = 5
-SUPPORTED_CONTROL_DOMAINS = ("button", "input_boolean", "light", "scene", "script", "switch")
+SUPPORTED_CONTROL_DOMAINS = (
+    "button",
+    "input_boolean",
+    "light",
+    "media_player",
+    "scene",
+    "script",
+    "switch",
+)
 SUPPORTED_DISPLAY_DOMAINS = ("binary_sensor", "climate", "sensor")
 SUPPORTED_DOMAINS = SUPPORTED_CONTROL_DOMAINS + SUPPORTED_DISPLAY_DOMAINS
 DAYS = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
@@ -92,6 +100,8 @@ class DashboardCard:
         if self.card_type == "sprinkler":
             return "sprinkler"
         domain = self.entity_id.split(".", maxsplit=1)[0]
+        if domain == "media_player":
+            return "media"
         if domain in {"light", "switch", "input_boolean"}:
             return "toggle"
         if domain == "button":

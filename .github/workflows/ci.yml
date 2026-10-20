@@ -8,6 +8,17 @@ permissions:
   contents: read
 
 jobs:
+  native-ha:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.14"
+          cache: pip
+      - run: pip install homeassistant==2026.9.4 argon2-cffi==25.1.0
+      - run: python tests/verify_ha_flow.py "$PWD"
+
   test:
     runs-on: ubuntu-latest
     strategy:

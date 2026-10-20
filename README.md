@@ -36,9 +36,12 @@ automations, or other devices.
 - Give a rental guest a dashboard that expires at checkout.
 - Give a visitor temporary access that can be removed immediately.
 
-You can add lights, switches, buttons, scenes, scripts, input booleans, sensors,
+You can add lights, switches, media players, buttons, scenes, scripts, input booleans, sensors,
 binary sensors, and climate entities. Sensors and climate entities are shown as
-read-only information. Sprinkler switches can be marked as timed zones.
+read-only information. Media players show the power, playback, track, volume,
+and mute controls supported by the device. Media browsing and arbitrary media URLs
+are not exposed. Selected Rachio zone switches automatically use timed watering;
+sprinkler settings stay hidden for everyone else.
 
 ## Install with HACS
 
@@ -60,8 +63,11 @@ repository:
 3. Search for **Limited Access Dashboard**.
 4. Choose the dashboard name and its short web-address name.
 5. Create a separate username and password for the guest.
-6. Select exactly which Home Assistant entities should appear.
+6. Choose an entity type to filter the list, then add the entities you want.
+   To add more types, turn on **Add another entity type before continuing**.
+   Your selected entities stay selected and can be removed or reordered.
 7. Choose an expiration date or an allowed weekly schedule if needed.
+8. Copy the dashboard link on the final screen, then save.
 
 To create another dashboard, add the integration again. To change an existing
 one, select **Configure** on its integration card.
@@ -71,6 +77,16 @@ Argon2 hashes and are never shown again. Leaving the password box blank while
 editing keeps the existing password.
 
 ## Open and share the dashboard
+
+Setup shows the dashboard link and guest username before saving. Send the link
+and the separate dashboard password to your guest. They open it in a browser;
+they do not need the HA app or a Home Assistant account.
+
+To find the link later, open the integration's dashboard device and select
+**Visit**, or open **Configure** on the integration entry. The link uses your
+configured remote address (including Home Assistant Cloud) when available.
+If it shows a local address, it only works on your home network; configure remote
+access before sharing it with someone away from home.
 
 Local address:
 
@@ -92,6 +108,10 @@ access. Do not share your Home Assistant account.
 The page does not expose a Home Assistant access token. Every displayed entity
 and every allowed action is checked on the server against the choices made by
 the administrator.
+
+The plugs filter shows switches classified as outlets in HA. If a plug is not
+listed there, look under **Switches**. Timed irrigation currently supports Rachio
+zone switches only, not controller, rain-delay, hose-timer, or schedule switches.
 
 ## Safety
 

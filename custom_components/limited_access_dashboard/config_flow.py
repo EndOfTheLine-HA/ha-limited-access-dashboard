@@ -19,6 +19,8 @@ from .config import (
     legacy_to_entry,
     normalize_slug,
 )
+from .entities import is_sprinkler, is_unsupported_irrigation
+from .links import dashboard_url
 from .security import hash_password
 
 CONF_TITLE = "title"
@@ -31,7 +33,6 @@ CONF_SESSION_HOURS = "session_hours"
 CONF_ACTIVE_FROM = "active_from"
 CONF_EXPIRES_AT = "expires_at"
 CONF_ENTITIES = "entities"
-CONF_ENABLE_SPRINKLERS = "enable_sprinklers"
 CONF_SPRINKLER_ENTITIES = "sprinkler_entities"
 CONF_DURATION_MINUTES = "duration_minutes"
 CONF_ALWAYS_ACCESS = "always_access"
@@ -94,26 +95,51 @@ def _account_schema(current: dict[str, Any], *, password_required: bool) -> vol.
     return vol.Schema(schema)
 
 
-def _cards_schema(current: dict[str, Any]) -> vol.Schema:
+ENTITY_TYPES = {
+    "all": "All supported entities",
+    "light": "Lights",
+    "switch": "Switches",
+    "outlet": "Plugs / outlets",
+    "media_player": "Media players",
+    "sensor": "Sensors",
+    "binary_sensor": "Binary sensors",
+    "climate": "Climate (view only)",
+    "button": "Buttons",
+    "input_boolean": "Toggle helpers",
+    "scene": "Scenes",
+    "script": "Scripts",
+}
+
+
+def _cards_schema(current: dict[str, Any], entity_type: str = "all") -> vol.Schema:
+    entity_filter = {"domain": list(SUPPORTED_DOMAINS)}
+    if entity_type == "outlet":
+        entity_filter = {"domain": "switch", "device_class": "outlet"}
+    elif entity_type != "all":
+        entity_filter = {"domain": entity_type}
     return vol.Schema(
         {
             vol.Optional(
                 CONF_ENTITIES,
                 description={
-                    "suggested_value": [
-                        entity
-                        for entity in current.get(CONF_ENTITIES, [])
-                        if entity not in current.get(CONF_SPRINKLER_ENTITIES, [])
-                    ]
+                    "suggested_value": list(
+                        dict.fromkeys(
+                            [
+                                *current.get(CONF_ENTITIES, []),
+                                *current.get(CONF_SPRINKLER_ENTITIES, []),
+                            ]
+                        )
+                    )
                 },
             ): selector.EntitySelector(
                 selector.EntitySelectorConfig(
                     domain=list(SUPPORTED_DOMAINS), multiple=True, reorder=True
                 )
             ),
-            _suggested(
-                CONF_ENABLE_SPRINKLERS, current, bool(current.get(CONF_SPRINKLER_ENTITIES))
-            ): selector.BooleanSelector(),
+            vol.Optional("add_entities"): selector.EntitySelector(
+                selector.EntitySelectorConfig(filter=entity_filter, multiple=True)
+            ),
+            vol.Required("choose_another_type", default=False): selector.BooleanSelector(),
         }
     )
 
@@ -121,14 +147,6 @@ def _cards_schema(current: dict[str, Any]) -> vol.Schema:
 def _sprinklers_schema(current: dict[str, Any]) -> vol.Schema:
     return vol.Schema(
         {
-            vol.Optional(
-                CONF_SPRINKLER_ENTITIES,
-                description={"suggested_value": current.get(CONF_SPRINKLER_ENTITIES, [])},
-            ): selector.EntitySelector(
-                selector.EntitySelectorConfig(
-                    domain="switch", integration="rachio", multiple=True, reorder=True
-                )
-            ),
             _suggested(
                 CONF_DURATION_MINUTES, current, DEFAULT_DURATION_MINUTES
             ): selector.NumberSelector(
@@ -203,19 +221,89 @@ def _build_schedule(user_input: dict[str, Any]) -> str | dict[str, list[str]]:
 
 
 class SprinklerStep:
-    async def async_step_sprinklers(self, user_input=None):
+    async def async_step_entity_filter(self, user_input=None):
+        if user_input is not None:
+            self._entity_type = user_input["entity_type"]
+            return await self.async_step_cards()
+        return self.async_show_form(
+            step_id="entity_filter",
+            data_schema=vol.Schema(
+                {
+                    vol.Required("entity_type", default="all"): selector.SelectSelector(
+                        selector.SelectSelectorConfig(
+                            options=[
+                                {"value": key, "label": label}
+                                for key, label in ENTITY_TYPES.items()
+                            ],
+                            mode=selector.SelectSelectorMode.DROPDOWN,
+                        )
+                    )
+                }
+            ),
+        )
+
+    async def async_step_cards(self, user_input=None):
         current = getattr(self, "_current", self._data)
         errors = {}
         if user_input is not None:
-            zones = list(dict.fromkeys(user_input.get(CONF_SPRINKLER_ENTITIES, [])))
-            if not zones:
-                errors[CONF_SPRINKLER_ENTITIES] = "entities_required"
+            entities = list(
+                dict.fromkeys(
+                    [*user_input.get(CONF_ENTITIES, []), *user_input.get("add_entities", [])]
+                )
+            )
+            if any(entity.split(".")[0] not in SUPPORTED_DOMAINS for entity in entities):
+                errors[CONF_ENTITIES] = "unsupported_entity"
+            elif any(is_unsupported_irrigation(self.hass, entity) for entity in entities):
+                errors[CONF_ENTITIES] = "unsupported_irrigation"
+            elif not entities and not user_input.get("choose_another_type"):
+                errors[CONF_ENTITIES] = "entities_required"
             else:
-                self._data.update(user_input)
-                self._data[CONF_SPRINKLER_ENTITIES] = zones
+                self._data[CONF_ENTITIES] = entities
+                self._data[CONF_SPRINKLER_ENTITIES] = [
+                    entity
+                    for entity in entities
+                    if is_sprinkler(self.hass, entity)
+                    or entity in current.get(CONF_SPRINKLER_ENTITIES, [])
+                ]
+                if user_input.get("choose_another_type"):
+                    return await self.async_step_entity_filter()
+                if self._data[CONF_SPRINKLER_ENTITIES]:
+                    return await self.async_step_sprinklers()
                 return await self.async_step_schedule()
+            current = {**current, CONF_ENTITIES: entities}
         return self.async_show_form(
-            step_id="sprinklers", data_schema=_sprinklers_schema(current), errors=errors
+            step_id="cards",
+            data_schema=_cards_schema(current, getattr(self, "_entity_type", "all")),
+            errors=errors,
+            description_placeholders={
+                "entity_type": ENTITY_TYPES[getattr(self, "_entity_type", "all")]
+            },
+        )
+
+    async def async_step_sprinklers(self, user_input=None):
+        current = getattr(self, "_current", self._data)
+        if user_input is not None:
+            self._data[CONF_DURATION_MINUTES] = user_input[CONF_DURATION_MINUTES]
+            return await self.async_step_schedule()
+        return self.async_show_form(step_id="sprinklers", data_schema=_sprinklers_schema(current))
+
+    async def async_step_share(self, user_input=None):
+        current = getattr(self, "_current", self._data)
+        if user_input is not None:
+            if isinstance(self, config_entries.OptionsFlow):
+                merged = deepcopy(current)
+                self.hass.config_entries.async_update_entry(
+                    self.config_entry, title=merged[CONF_TITLE], unique_id=merged[CONF_SLUG]
+                )
+                return self.async_create_entry(title="", data=merged)
+            return self.async_create_entry(title=self._data[CONF_TITLE], data=self._data)
+        return self.async_show_form(
+            step_id="share",
+            data_schema=vol.Schema({}),
+            description_placeholders={
+                "dashboard_url": dashboard_url(self.hass, current[CONF_SLUG]),
+                "username": current[CONF_USERNAME],
+            },
         )
 
 
@@ -270,30 +358,10 @@ class LimitedAccessDashboardConfigFlow(SprinklerStep, config_entries.ConfigFlow,
                 )
                 normalized.pop(CONF_PASSWORD, None)
                 self._data.update(normalized)
-                return await self.async_step_cards()
+                return await self.async_step_entity_filter()
         return self.async_show_form(
             step_id="account",
             data_schema=_account_schema(self._data, password_required=True),
-            errors=errors,
-        )
-
-    async def async_step_cards(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
-        errors: dict[str, str] = {}
-        if user_input is not None:
-            entities = list(user_input.get(CONF_ENTITIES, []))
-            enabled = bool(user_input.get(CONF_ENABLE_SPRINKLERS, False))
-            if not entities and not enabled:
-                errors[CONF_ENTITIES] = "entities_required"
-            else:
-                user_input[CONF_ENTITIES] = list(dict.fromkeys(entities))
-                self._data.update(user_input)
-                if enabled:
-                    return await self.async_step_sprinklers()
-                self._data[CONF_SPRINKLER_ENTITIES] = []
-                return await self.async_step_schedule()
-        return self.async_show_form(
-            step_id="cards",
-            data_schema=_cards_schema(self._data),
             errors=errors,
         )
 
@@ -307,7 +375,7 @@ class LimitedAccessDashboardConfigFlow(SprinklerStep, config_entries.ConfigFlow,
             else:
                 self._data[CONF_SCHEDULE] = _build_schedule(user_input)
                 self._data["timezone"] = self.hass.config.time_zone
-                return self.async_create_entry(title=self._data[CONF_TITLE], data=self._data)
+                return await self.async_step_share()
         return self.async_show_form(
             step_id="schedule",
             data_schema=_schedule_schema(self._data),
@@ -352,6 +420,9 @@ class LimitedAccessDashboardOptionsFlow(SprinklerStep, config_entries.OptionsFlo
             step_id="init",
             data_schema=_dashboard_schema(self._current),
             errors=errors,
+            description_placeholders={
+                "dashboard_url": dashboard_url(self.hass, self._current[CONF_SLUG])
+            },
         )
 
     async def async_step_account(
@@ -376,32 +447,12 @@ class LimitedAccessDashboardOptionsFlow(SprinklerStep, config_entries.OptionsFlo
                 else:
                     normalized[CONF_PASSWORD_HASH] = self._current[CONF_PASSWORD_HASH]
                 self._data.update(normalized)
-                return await self.async_step_cards()
+                return await self.async_step_entity_filter()
         return self.async_show_form(
             step_id="account",
             data_schema=_account_schema(self._current, password_required=False),
             errors=errors,
             description_placeholders={"password_note": "Leave blank to keep the current password."},
-        )
-
-    async def async_step_cards(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
-        errors: dict[str, str] = {}
-        if user_input is not None:
-            entities = list(user_input.get(CONF_ENTITIES, []))
-            enabled = bool(user_input.get(CONF_ENABLE_SPRINKLERS, False))
-            if not entities and not enabled:
-                errors[CONF_ENTITIES] = "entities_required"
-            else:
-                user_input[CONF_ENTITIES] = list(dict.fromkeys(entities))
-                self._data.update(user_input)
-                if enabled:
-                    return await self.async_step_sprinklers()
-                self._data[CONF_SPRINKLER_ENTITIES] = []
-                return await self.async_step_schedule()
-        return self.async_show_form(
-            step_id="cards",
-            data_schema=_cards_schema(self._current),
-            errors=errors,
         )
 
     async def async_step_schedule(
@@ -413,14 +464,7 @@ class LimitedAccessDashboardOptionsFlow(SprinklerStep, config_entries.OptionsFlo
                 errors[CONF_WEEKDAYS] = "weekdays_required"
             else:
                 self._data[CONF_SCHEDULE] = _build_schedule(user_input)
-                merged = deepcopy(self._current)
-                merged.update(self._data)
-                self.hass.config_entries.async_update_entry(
-                    self.config_entry,
-                    title=merged[CONF_TITLE],
-                    unique_id=merged[CONF_SLUG],
-                )
-                return self.async_create_entry(title="", data=merged)
+                return await self.async_step_share()
         return self.async_show_form(
             step_id="schedule",
             data_schema=_schedule_schema(self._current),

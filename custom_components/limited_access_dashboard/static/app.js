@@ -22,9 +22,10 @@
         element.classList.toggle("unavailable", !card.available);
         const state = element.querySelector(".state-value");
         if (state) state.textContent = `${card.state}${card.unit ? ` ${card.unit}` : ""}`;
-        const control = element.querySelector("button, .tile-action");
-        if (control) {
-          const disabled = !payload.available || !card.available;
+        for (const control of element.querySelectorAll("button, .tile-action, input[type='number']")) {
+          const unsupported = control.dataset.mediaAction &&
+            !card.media_controls.some(item => item.action === control.dataset.mediaAction);
+          const disabled = !payload.available || !card.available || unsupported;
           control.toggleAttribute("disabled", disabled);
           control.classList.toggle("disabled", disabled);
         }
