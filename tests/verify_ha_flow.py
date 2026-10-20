@@ -56,11 +56,20 @@ async def check_flows():
         raise AssertionError("Seven-character password accepted")
     for entity_type in flow.ENTITY_TYPES:
         schema = flow._cards_schema({}, entity_type).schema
+        assert "entities" not in schema
         assert "enable_sprinklers" not in schema
         assert "sprinkler_entities" not in schema and "duration_minutes" not in schema
         config = schema["add_entities"].config
         if entity_type == "outlet":
             assert config["filter"][0]["device_class"] == ["outlet"]
+        selected_schema = flow._cards_schema(
+            {"entities": ["light.porch", "media_player.tv"]}, entity_type
+        ).schema
+        assert selected_schema["entities"].config["include_entities"] == [
+            "light.porch",
+            "media_player.tv",
+        ]
+        assert selected_schema["entities"].config["reorder"] is True
     registry = SimpleNamespace(
         async_get=lambda entity: {
             "switch.zone": SimpleNamespace(platform="rachio", unique_id="controller-zone-id"),
@@ -105,6 +114,9 @@ async def check_flows():
             assert result["step_id"] == "entity_filter"
             result = await item.async_step_entity_filter({"entity_type": "media_player"})
             assert result["step_id"] == "cards"
+            assert result["data_schema"].schema["entities"].config["include_entities"] == [
+                "light.porch"
+            ]
             assert item._data["entities"] == ["light.porch"]
             result = await item.async_step_cards(
                 {"entities": ["light.porch"], "add_entities": ["media_player.tv"]}

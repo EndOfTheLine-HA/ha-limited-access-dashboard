@@ -117,31 +117,27 @@ def _cards_schema(current: dict[str, Any], entity_type: str = "all") -> vol.Sche
         entity_filter = {"domain": "switch", "device_class": "outlet"}
     elif entity_type != "all":
         entity_filter = {"domain": entity_type}
-    return vol.Schema(
-        {
-            vol.Optional(
-                CONF_ENTITIES,
-                description={
-                    "suggested_value": list(
-                        dict.fromkeys(
-                            [
-                                *current.get(CONF_ENTITIES, []),
-                                *current.get(CONF_SPRINKLER_ENTITIES, []),
-                            ]
-                        )
-                    )
-                },
-            ): selector.EntitySelector(
+    selected = list(
+        dict.fromkeys([*current.get(CONF_ENTITIES, []), *current.get(CONF_SPRINKLER_ENTITIES, [])])
+    )
+    fields = {}
+    if selected:
+        fields[vol.Optional(CONF_ENTITIES, description={"suggested_value": selected})] = (
+            selector.EntitySelector(
                 selector.EntitySelectorConfig(
-                    domain=list(SUPPORTED_DOMAINS), multiple=True, reorder=True
+                    include_entities=selected, multiple=True, reorder=True
                 )
-            ),
+            )
+        )
+    fields.update(
+        {
             vol.Optional("add_entities"): selector.EntitySelector(
                 selector.EntitySelectorConfig(filter=entity_filter, multiple=True)
             ),
             vol.Required("choose_another_type", default=False): selector.BooleanSelector(),
         }
     )
+    return vol.Schema(fields)
 
 
 def _sprinklers_schema(current: dict[str, Any]) -> vol.Schema:
