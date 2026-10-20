@@ -1,0 +1,112 @@
+{
+  "title": "Limited Access Dashboard",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Create a limited dashboard",
+        "description": "Choose the dashboard name and the short name used in its web address.",
+        "data": {
+          "title": "Dashboard name",
+          "slug": "Web address name"
+        },
+        "data_description": {
+          "slug": "Use a short name such as landscaper, child, or rental-guest."
+        }
+      },
+      "account": {
+        "title": "Create the guest sign-in",
+        "description": "These credentials are separate from Home Assistant accounts.",
+        "data": {
+          "username": "Username",
+          "display_name": "Name shown on the dashboard",
+          "password": "Password",
+          "session_hours": "Stay signed in for",
+          "active_from": "Access begins (optional)",
+          "expires_at": "Access expires (optional)"
+        }
+      },
+      "cards": {
+        "title": "Choose dashboard cards",
+        "description": "Only selected entities are visible. Sprinkler zones are always time-limited.",
+        "data": {
+          "entities": "Entities to show",
+          "sprinkler_entities": "Sprinkler zone switches",
+          "duration_minutes": "Sprinkler run time"
+        }
+      },
+      "schedule": {
+        "title": "Choose when access works",
+        "description": "For a daily window, select the allowed weekdays and hours.",
+        "data": {
+          "always_access": "Allow access at any time",
+          "weekdays": "Allowed weekdays",
+          "start_time": "Start time",
+          "end_time": "End time"
+        }
+      }
+    },
+    "error": {
+      "invalid_slug": "Enter a valid web address name.",
+      "invalid_username": "The username must contain at least three characters.",
+      "password_too_short": "Use a password with at least 12 characters.",
+      "entities_required": "Select at least one entity.",
+      "weekdays_required": "Select at least one weekday.",
+      "slug_in_use": "Another dashboard already uses this web address name."
+    },
+    "abort": {
+      "already_configured": "A dashboard with this web address already exists.",
+      "invalid_import": "The existing YAML configuration could not be imported."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Dashboard details",
+        "description": "Change the dashboard name or its web address.",
+        "data": {
+          "title": "Dashboard name",
+          "slug": "Web address name"
+        }
+      },
+      "account": {
+        "title": "Guest sign-in and expiration",
+        "description": "{password_note}",
+        "data": {
+          "username": "Username",
+          "display_name": "Name shown on the dashboard",
+          "password": "New password",
+          "session_hours": "Stay signed in for",
+          "active_from": "Access begins (optional)",
+          "expires_at": "Access expires (optional)"
+        }
+      },
+      "cards": {
+        "title": "Dashboard cards",
+        "description": "Choose exactly which entities this person can see and control.",
+        "data": {
+          "entities": "Entities to show",
+          "sprinkler_entities": "Sprinkler zone switches",
+          "duration_minutes": "Sprinkler run time"
+        }
+      },
+      "schedule": {
+        "title": "Access schedule",
+        "description": "Changes take effect after this screen is saved.",
+        "data": {
+          "always_access": "Allow access at any time",
+          "weekdays": "Allowed weekdays",
+          "start_time": "Start time",
+          "end_time": "End time"
+        }
+      }
+    },
+    "error": {
+      "invalid_slug": "Enter a valid web address name.",
+      "invalid_username": "The username must contain at least three characters.",
+      "password_too_short": "Use a password with at least 12 characters.",
+      "entities_required": "Select at least one entity.",
+      "weekdays_required": "Select at least one weekday.",
+      "slug_in_use": "Another dashboard already uses this web address name."
+    }
+  }
+}

@@ -6,8 +6,8 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from guest_portal.app import create_app
-from guest_portal.security import hash_password
+from limited_access_dashboard.app import create_app
+from limited_access_dashboard.security import hash_password
 
 
 def _write_config(
@@ -20,10 +20,10 @@ def _write_config(
     path.write_text(
         f"""
 app:
-  title: Test Portal
+  title: Test Dashboard
   timezone: UTC
   cookie_secure: false
-  database_path: "{(path.parent / "portal.db").as_posix()}"
+  database_path: "{(path.parent / "dashboard.db").as_posix()}"
   allowed_webhook_hosts: [homeassistant.local]
 actions:
   allowed_action:

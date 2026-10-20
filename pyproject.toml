@@ -3,9 +3,9 @@ requires = ["setuptools>=75"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "ha-guest-portal"
+name = "ha-limited-access-dashboard"
 version = "0.1.0"
-description = "Least-privilege guest controls for Home Assistant"
+description = "Customizable, restricted-access dashboards for Home Assistant"
 readme = "README.md"
 requires-python = ">=3.12"
 license = "MIT"
@@ -29,13 +29,13 @@ dev = [
 ]
 
 [project.scripts]
-ha-guest-portal = "guest_portal.cli:main"
+ha-limited-access-dashboard = "limited_access_dashboard.cli:main"
 
 [tool.setuptools.packages.find]
-include = ["guest_portal*"]
+include = ["limited_access_dashboard*"]
 
 [tool.setuptools.package-data]
-guest_portal = ["templates/*.html", "static/*.css"]
+limited_access_dashboard = ["templates/*.html", "static/*.css"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
