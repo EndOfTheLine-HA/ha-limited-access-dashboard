@@ -11,6 +11,7 @@ DOMAIN = "limited_access_dashboard"
 URL_ROOT = "/limited-access-dashboard"
 DEFAULT_SESSION_HOURS = 8
 DEFAULT_DURATION_MINUTES = 5
+DEFAULT_DATA_DIR = "/config/limited-access-dashboard-data"
 SUPPORTED_CONTROL_DOMAINS = (
     "button",
     "input_boolean",
@@ -252,9 +253,7 @@ def load_settings(raw: dict[str, Any], *, default_timezone: str = "UTC") -> Sett
         timezone=timezone,
         session_hours=session_hours,
         cookie_secure=bool(raw.get("cookie_secure", True)),
-        database_path=Path(
-            str(raw.get("database_path", f"/config/limited-access-dashboard-data/{slug}.db"))
-        ),
+        database_path=Path(str(raw.get("database_path", f"{DEFAULT_DATA_DIR}/{slug}.db"))),
         duration_minutes=duration_minutes,
         schedule=WeeklySchedule.from_value(schedule_value),
         account=Account(

@@ -21,7 +21,12 @@ from .config import (
 )
 from .entities import is_sprinkler, is_unsupported_irrigation
 from .links import dashboard_url
-from .security import hash_password
+from .security import (
+    MAX_PASSWORD_LENGTH,
+    MAX_USERNAME_LENGTH,
+    MIN_PASSWORD_LENGTH,
+    hash_password,
+)
 
 CONF_TITLE = "title"
 CONF_SLUG = "slug"
@@ -55,6 +60,19 @@ def _dashboard_schema(current: dict[str, Any]) -> vol.Schema:
             ),
         }
     )
+
+
+def _password_error(password: str) -> str | None:
+    """Translation key for an unacceptable new password, or None.
+
+    Applies only when a password is set: existing guests keep working with the
+    password they already have.
+    """
+    if len(password) < MIN_PASSWORD_LENGTH:
+        return "password_too_short"
+    if len(password) > MAX_PASSWORD_LENGTH:
+        return "password_too_long"
+    return None
 
 
 def _account_schema(current: dict[str, Any], *, password_required: bool) -> vol.Schema:
@@ -378,10 +396,10 @@ class LimitedAccessDashboardConfigFlow(SprinklerStep, config_entries.ConfigFlow,
         if user_input is not None:
             username = str(user_input[CONF_USERNAME]).strip().lower()
             password = str(user_input[CONF_PASSWORD])
-            if len(username) < 3:
+            if not 3 <= len(username) <= MAX_USERNAME_LENGTH:
                 errors[CONF_USERNAME] = "invalid_username"
-            elif len(password) < 8:
-                errors[CONF_PASSWORD] = "password_too_short"
+            elif error := _password_error(password):
+                errors[CONF_PASSWORD] = error
             else:
                 normalized = dict(user_input)
                 normalized[CONF_USERNAME] = username
@@ -449,10 +467,10 @@ class LimitedAccessDashboardOptionsFlow(SprinklerStep, config_entries.OptionsFlo
             normalized = dict(user_input)
             username = str(normalized[CONF_USERNAME]).strip().lower()
             password = str(normalized.pop(CONF_PASSWORD, ""))
-            if len(username) < 3:
+            if not 3 <= len(username) <= MAX_USERNAME_LENGTH:
                 errors[CONF_USERNAME] = "invalid_username"
-            elif password and len(password) < 8:
-                errors[CONF_PASSWORD] = "password_too_short"
+            elif password and (error := _password_error(password)):
+                errors[CONF_PASSWORD] = error
             else:
                 normalized[CONF_USERNAME] = username
                 _normalize_datetime_values(normalized)

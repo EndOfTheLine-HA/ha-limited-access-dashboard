@@ -9,6 +9,6 @@
   "iot_class": "local_push",
   "issue_tracker": "https://github.com/EndOfTheLine-HA/ha-limited-access-dashboard/issues",
   "requirements": ["argon2-cffi==25.1.0"],
-  "version": "0.4.2"
+  "version": "0.5.0"
 }
 

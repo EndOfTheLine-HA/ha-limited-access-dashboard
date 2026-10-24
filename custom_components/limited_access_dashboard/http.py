@@ -15,12 +15,29 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 from .config import URL_ROOT, Account, DashboardCard, Settings
 from .media import action_data as media_action_data
 from .media import controls as media_controls
-from .security import RateLimiter, random_token, tokens_match, verify_password
+from .security import (
+    MAX_PASSWORD_LENGTH,
+    MAX_USERNAME_LENGTH,
+    RateLimiter,
+    credential_fingerprint,
+    random_token,
+    tokens_match,
+    verify_password,
+)
 from .storage import Session, Store
 
 _LOGGER = logging.getLogger(__name__)
 SESSION_COOKIE = "lad_session"
 LOGIN_CSRF_COOKIE = "lad_login_csrf"
+
+# Login attempts are limited per client address, and in total, so that changing
+# usernames neither multiplies an attacker's guesses nor grows memory. The
+# total cap bounds guessing spread across many addresses.
+LOGIN_WINDOW_SECONDS = 300
+LOGIN_LIMIT_PER_ADDRESS = 5
+LOGIN_LIMIT_TOTAL = 50
+# A login form is a few hundred bytes; anything far larger is rejected unread.
+MAX_LOGIN_BODY_BYTES = 4096
 
 _DOMAIN_ICONS = {
     "binary_sensor": "◉",
@@ -91,13 +108,31 @@ class DashboardRuntime:
         )
 
     async def principal(self, request: web.Request) -> tuple[Account, Session] | None:
+        """The logged-in guest, or None.
+
+        A session counts only while the account is active and was created with
+        the current password: changing the password, or the account expiring,
+        ends every existing session.
+        """
         token = request.cookies.get(SESSION_COOKIE)
         if not token:
             return None
         session = await self.hass.async_add_executor_job(self.store.get_session, token)
-        if session is None or session.username != self.settings.account.username:
+        account = self.settings.account
+        if (
+            session is None
+            or session.username != account.username
+            or not tokens_match(session.credential, credential_fingerprint(account.password_hash))
+            or not account.is_active(datetime.now(UTC))
+        ):
             return None
-        return self.settings.account, session
+        return account, session
+
+    def session_expiry(self, now: datetime) -> datetime:
+        """When a session started now must end: never after the account does."""
+        expires_at = now + timedelta(hours=self.settings.session_hours)
+        account_expiry = self.settings.account.expires_at
+        return min(expires_at, account_expiry) if account_expiry else expires_at
 
     async def audit(
         self,
@@ -271,7 +306,8 @@ class RootView(ManagedView):
         return runtime.html(
             "dashboard.html",
             account=account,
-            cards=runtime.cards(),
+            # Outside the allowed hours the guest sees why, but no live states.
+            cards=runtime.cards() if available else [],
             has_sprinklers=bool(runtime.settings.sprinklers),
             available=available,
             reason=reason,
@@ -305,33 +341,50 @@ class LoginView(ManagedView):
 
     async def post(self, request: web.Request, slug: str) -> web.StreamResponse:
         runtime = self.runtime(slug)
+        if request.content_length is None or request.content_length > MAX_LOGIN_BODY_BYTES:
+            return web.HTTPSeeOther(location=runtime.url("/login?error=invalid_request"))
         form = await request.post()
         username = str(form.get("username", "")).strip().lower()
         password = str(form.get("password", ""))
         csrf_token = str(form.get("csrf_token", ""))
         if not tokens_match(csrf_token, request.cookies.get(LOGIN_CSRF_COOKIE)):
             return web.HTTPSeeOther(location=runtime.url("/login?error=invalid_request"))
-        if not runtime.limiter.allow(f"login:{username}", limit=5, window_seconds=300):
+        address = request.remote or "unknown"
+        if not runtime.limiter.allow(
+            f"login-address:{address}",
+            limit=LOGIN_LIMIT_PER_ADDRESS,
+            window_seconds=LOGIN_WINDOW_SECONDS,
+        ) or not runtime.limiter.allow(
+            "login-total", limit=LOGIN_LIMIT_TOTAL, window_seconds=LOGIN_WINDOW_SECONDS
+        ):
             return web.HTTPSeeOther(location=runtime.url("/login?error=try_later"))
         account = runtime.settings.account
+        well_formed = len(username) <= MAX_USERNAME_LENGTH and len(password) <= MAX_PASSWORD_LENGTH
+        # Argon2 always runs, off the event loop, so neither the response time
+        # nor a blocked Home Assistant reveals whether the username exists.
+        password_ok = await runtime.hass.async_add_executor_job(
+            verify_password,
+            account.password_hash if well_formed and username == account.username else None,
+            password[:MAX_PASSWORD_LENGTH],
+        )
         available, _reason = runtime.settings.access(datetime.now(UTC))
-        if (
-            username != account.username
-            or not verify_password(account.password_hash, password)
-            or not available
-        ):
+        if not password_ok or not available:
             await runtime.audit(
                 request,
-                username=username or "unknown",
+                username=username[:MAX_USERNAME_LENGTH] or "unknown",
                 action_id="login",
                 outcome="denied",
                 detail="invalid credentials or inactive account",
             )
             return web.HTTPSeeOther(location=runtime.url("/login?error=invalid_credentials"))
 
-        expires_at = datetime.now(UTC) + timedelta(hours=runtime.settings.session_hours)
+        now = datetime.now(UTC)
+        expires_at = runtime.session_expiry(now)
         token, _session = await runtime.hass.async_add_executor_job(
-            runtime.store.create_session, account.username, expires_at
+            runtime.store.create_session,
+            account.username,
+            expires_at,
+            credential_fingerprint(account.password_hash),
         )
         await runtime.audit(
             request,
@@ -344,7 +397,7 @@ class LoginView(ManagedView):
         response.set_cookie(
             SESSION_COOKIE,
             token,
-            max_age=runtime.settings.session_hours * 3600,
+            max_age=max(1, int((expires_at - now).total_seconds())),
             httponly=True,
             secure=runtime.settings.cookie_secure,
             samesite="Strict",
@@ -457,6 +510,18 @@ class StopAllView(ManagedView):
             str(form.get("csrf_token", "")), session.csrf_token
         ):
             return web.HTTPSeeOther(location=runtime.url("?result=denied"))
+        available, reason = runtime.settings.access(datetime.now(UTC))
+        if not available:
+            await runtime.audit(
+                request,
+                username=account.username,
+                action_id="stop_all",
+                outcome="denied",
+                detail=reason,
+            )
+            return web.HTTPSeeOther(location=runtime.url("?result=denied"))
+        if not runtime.limiter.allow(f"action:{account.username}", limit=1, window_seconds=2):
+            return web.HTTPSeeOther(location=runtime.url("?result=rate_limited"))
         try:
             await runtime.stop_all_sprinklers()
         except Exception as exc:
@@ -489,7 +554,11 @@ class StateView(ManagedView):
             raise web.HTTPUnauthorized()
         available, reason = runtime.settings.access(datetime.now(UTC))
         return web.json_response(
-            {"available": available, "reason": reason, "cards": runtime.cards()},
+            {
+                "available": available,
+                "reason": reason,
+                "cards": runtime.cards() if available else [],
+            },
             headers={"Cache-Control": "no-store"},
         )
 

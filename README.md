@@ -72,9 +72,25 @@ repository:
 To create another dashboard, add the integration again. To change an existing
 one, select **Configure** on its integration card.
 
-Passwords must contain at least 8 characters. They are stored as secure
-Argon2 hashes and are never shown again. Leaving the password box blank while
-editing keeps the existing password.
+Passwords must contain at least 12 characters; a short passphrase of a few
+words works well. They are stored as secure Argon2 hashes and are never shown
+again. Leaving the password box blank while editing keeps the existing password.
+Guests who already have a shorter password keep it until you change it.
+
+### Sessions and sign-in limits
+
+- Changing a dashboard's password signs out everyone using it, immediately.
+- A sign-in never lasts beyond the account's expiration date, and an expired
+  account is signed out on its next request.
+- Outside the allowed weekly schedule the guest stays signed in and sees why,
+  but no live states.
+- Each address gets five sign-in attempts per five minutes, and a dashboard
+  accepts at most fifty attempts per five minutes in total.
+- Removing a dashboard also deletes its session and audit database.
+
+If Home Assistant sits behind your own reverse proxy, configure
+`use_x_forwarded_for` and `trusted_proxies` in its `http:` settings so the
+per-address limit sees real guest addresses rather than the proxy's.
 
 ## Open and share the dashboard
 

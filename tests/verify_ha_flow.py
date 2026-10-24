@@ -4,7 +4,10 @@ Uses fake states/services: never operates real devices or edits HA configuration
 """
 
 import asyncio
+import sqlite3
 import sys
+import tempfile
+from contextlib import closing
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -17,20 +20,33 @@ from homeassistant.core import State  # noqa: E402
 from homeassistant.helpers.network import NoURLAvailableError  # noqa: E402
 
 from custom_components.limited_access_dashboard import config_flow as flow  # noqa: E402
+from custom_components.limited_access_dashboard import remove_database  # noqa: E402
 from custom_components.limited_access_dashboard.config import (  # noqa: E402
     DashboardCard,
     load_settings,
 )
 from custom_components.limited_access_dashboard.http import (  # noqa: E402
+    LOGIN_CSRF_COOKIE,
+    LOGIN_LIMIT_PER_ADDRESS,
+    MAX_LOGIN_BODY_BYTES,
+    SESSION_COOKIE,
     ActionView,
     DashboardManager,
     DashboardRuntime,
+    LoginView,
+    StateView,
 )
 from custom_components.limited_access_dashboard.links import dashboard_url  # noqa: E402
 from custom_components.limited_access_dashboard.media import action_data, controls  # noqa: E402
 from custom_components.limited_access_dashboard.security import (  # noqa: E402
+    RateLimiter,
     hash_password,
+    token_hash,
     verify_password,
+)
+from custom_components.limited_access_dashboard.storage import (  # noqa: E402
+    AUDIT_LOG_MAX_ROWS,
+    Store,
 )
 
 
@@ -47,13 +63,14 @@ async def check_flows():
         "custom_components.limited_access_dashboard.links.get_url", side_effect=NoURLAvailableError
     ):
         assert dashboard_url(None, "guest") == "/limited-access-dashboard/guest"
-    assert verify_password(hash_password("eight888"), "eight888")
-    try:
-        hash_password("seven77")
-    except ValueError:
-        pass
-    else:
-        raise AssertionError("Seven-character password accepted")
+    assert verify_password(hash_password("twelve-chars"), "twelve-chars")
+    for rejected in ("eleven-char", "x" * 257):
+        try:
+            hash_password(rejected)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError(f"{len(rejected)}-character password accepted")
     for entity_type in flow.ENTITY_TYPES:
         schema = flow._cards_schema({}, entity_type).schema
         assert "entities" not in schema
@@ -286,6 +303,161 @@ async def check_media():
     assert hass.services.async_call.call_count == before
 
 
+def _executor_hass(states=None):
+    """Fake hass whose executor runs jobs inline and records what ran."""
+    jobs = []
+
+    async def run(func, *args):
+        jobs.append(getattr(func, "__name__", repr(func)))
+        return func(*args)
+
+    hass = SimpleNamespace(
+        async_add_executor_job=run,
+        states=SimpleNamespace(get=lambda _: states),
+        services=SimpleNamespace(async_call=AsyncMock()),
+    )
+    return hass, jobs
+
+
+def _login_request(form, *, remote="198.51.100.7", csrf="login-csrf", size=200):
+    return SimpleNamespace(
+        content_length=size,
+        cookies={LOGIN_CSRF_COOKIE: csrf},
+        remote=remote,
+        post=AsyncMock(return_value={"csrf_token": csrf, **form}),
+    )
+
+
+async def check_security():
+    """Sessions end with the password or the account; login stays bounded."""
+    limiter = RateLimiter(max_keys=3)
+    for index in range(50):
+        limiter.allow(f"key-{index}", limit=1, window_seconds=300)
+    assert len(limiter) == 3, "rate limiter grew past its key cap"
+    assert limiter.allow("key-49", limit=1, window_seconds=300) is False
+
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        password_hash = hash_password("correct horse battery")
+        settings = load_settings(
+            {
+                "slug": "sec",
+                "username": "guest",
+                "password_hash": password_hash,
+                "entities": ["light.porch"],
+                "database_path": str(root / "sec.db"),
+                "session_hours": 168,
+                "expires_at": (datetime.now(UTC) + timedelta(hours=2)).isoformat(),
+            }
+        )
+        hass, jobs = _executor_hass(State("light.porch", "on", {"friendly_name": "Porch"}))
+        store = Store(settings.database_path)
+        runtime = DashboardRuntime(hass, "sec", settings, store)
+        manager = DashboardManager()
+        manager.add(runtime)
+        login = LoginView(manager)
+
+        # A correct login runs Argon2 in the executor and caps the session at
+        # the account's expiry, not the 168-hour session length.
+        response = await login.post(
+            _login_request({"username": "Guest", "password": "correct horse battery"}), "sec"
+        )
+        assert response.location == "/limited-access-dashboard/sec", response.location
+        assert "verify_password" in jobs, "Argon2 ran on the event loop"
+        token = response.cookies[SESSION_COOKIE].value
+        assert int(response.cookies[SESSION_COOKIE]["max-age"]) <= 2 * 3600
+        session = store.get_session(token)
+        assert session.expires_at <= settings.account.expires_at
+        request = SimpleNamespace(cookies={SESSION_COOKIE: token}, query={})
+        assert await runtime.principal(request) is not None
+
+        # Changing the password ends the session, even if set to the same text.
+        runtime.settings = replace(
+            settings,
+            account=replace(settings.account, password_hash=hash_password("correct horse battery")),
+        )
+        assert await runtime.principal(request) is None, "old session survived a password change"
+
+        # The account expiring ends the session too.
+        runtime.settings = replace(
+            settings,
+            account=replace(settings.account, expires_at=datetime.now(UTC) - timedelta(seconds=1)),
+        )
+        assert await runtime.principal(request) is None, "session outlived the account"
+        runtime.settings = settings
+
+        # Outside the allowed hours the guest stays logged in but sees no states.
+        state_view = StateView(manager)
+        assert "Porch" in (await state_view.get(request, "sec")).text
+        with patch.object(type(settings), "access", return_value=(False, "closed")):
+            body = (await state_view.get(request, "sec")).text
+            assert '"cards": []' in body and "Porch" not in body, body
+
+        # Sessions created before credential fingerprints existed are rejected.
+        legacy = root / "legacy.db"
+        with closing(sqlite3.connect(legacy)) as connection, connection:
+            connection.execute(
+                "CREATE TABLE sessions (token_hash TEXT PRIMARY KEY, username TEXT NOT NULL, "
+                "csrf_token TEXT NOT NULL, created_at TEXT NOT NULL, expires_at TEXT NOT NULL)"
+            )
+            connection.execute(
+                "INSERT INTO sessions VALUES (?, 'guest', 'c', ?, ?)",
+                (
+                    token_hash("legacy-token"),
+                    datetime.now(UTC).isoformat(),
+                    (datetime.now(UTC) + timedelta(hours=1)).isoformat(),
+                ),
+            )
+        legacy_runtime = DashboardRuntime(
+            hass, "legacy", replace(settings, database_path=legacy), Store(legacy)
+        )
+        legacy_request = SimpleNamespace(cookies={SESSION_COOKIE: "legacy-token"})
+        assert await legacy_runtime.principal(legacy_request) is None
+
+        # Login abuse: oversized bodies are refused unread, usernames never
+        # become limiter keys, and one address gets five tries per window.
+        runtime.limiter = RateLimiter()
+        oversized = _login_request({"username": "guest"}, size=MAX_LOGIN_BODY_BYTES + 1)
+        assert (await login.post(oversized, "sec")).location.endswith("error=invalid_request")
+        oversized.post.assert_not_awaited()
+        for attempt in range(LOGIN_LIMIT_PER_ADDRESS):
+            response = await login.post(
+                _login_request({"username": f"{'u' * 5000}{attempt}", "password": "x" * 9000}),
+                "sec",
+            )
+            assert response.location.endswith("error=invalid_credentials"), response.location
+        assert len(runtime.limiter) == 2, "login attempts created per-username limiter keys"
+        blocked = await login.post(
+            _login_request({"username": "guest", "password": "correct horse battery"}), "sec"
+        )
+        assert blocked.location.endswith("error=try_later")
+        # Another address is unaffected, so one attacker cannot lock the guest out.
+        other = await login.post(
+            _login_request(
+                {"username": "guest", "password": "correct horse battery"}, remote="203.0.113.9"
+            ),
+            "sec",
+        )
+        assert other.location == "/limited-access-dashboard/sec"
+        # Audit rows are truncated, and the table is capped.
+        with closing(sqlite3.connect(settings.database_path)) as connection:
+            longest = connection.execute("SELECT MAX(LENGTH(username)) FROM audit_log").fetchone()
+        assert longest[0] <= 64, longest
+        for index in range(AUDIT_LOG_MAX_ROWS + 25):
+            store.log(username="u", action_id="a", outcome="o", detail="d", remote_ip=str(index))
+        with closing(sqlite3.connect(settings.database_path)) as connection:
+            rows = connection.execute("SELECT COUNT(*) FROM audit_log").fetchone()[0]
+        assert rows <= AUDIT_LOG_MAX_ROWS, rows
+
+        # Removing the entry deletes its database, and nothing but *.db files.
+        keep = root / "keep.txt"
+        keep.write_text("not a database", encoding="utf-8")
+        remove_database(keep)
+        assert keep.exists()
+        remove_database(settings.database_path)
+        assert not settings.database_path.exists()
+
+
 async def main():
     for cls in (flow.LimitedAccessDashboardConfigFlow, flow.LimitedAccessDashboardOptionsFlow):
         item = cls()
@@ -324,9 +496,11 @@ async def main():
         assert item._data["schedule"] == "always"
     await check_flows()
     await check_media()
+    await check_security()
     print(
         "PASS: HA schemas, filters, retained selections, automatic zones, share links, "
-        "password boundaries, media controls, HTTP CSRF/entity/action denials"
+        "password boundaries, media controls, HTTP CSRF/entity/action denials, "
+        "session revocation, login limits, audit caps, database removal"
     )
 
 
