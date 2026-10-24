@@ -71,13 +71,14 @@
     },
     "error": {
       "invalid_slug": "Enter a valid web address name.",
-      "invalid_username": "The username must contain at least three characters.",
-      "password_too_short": "Use a password with at least 8 characters.",
+      "invalid_username": "The username must contain between 3 and 64 characters.",
+      "password_too_short": "Use a password with at least 12 characters. A longer passphrase is easier to remember and harder to guess.",
       "entities_required": "Select at least one entity.",
       "weekdays_required": "Select at least one weekday.",
       "slug_in_use": "Another dashboard already uses this web address name.",
       "unsupported_entity": "This entity type is not supported.",
-      "unsupported_irrigation": "Choose individual Rachio zone switches, not controller, rain-delay, hose timer, or schedule switches."
+      "unsupported_irrigation": "Choose individual Rachio zone switches, not controller, rain-delay, hose timer, or schedule switches.",
+      "password_too_long": "Use a password with at most 256 characters."
     },
     "abort": {
       "already_configured": "A dashboard with this web address already exists.",
@@ -152,13 +153,14 @@
     },
     "error": {
       "invalid_slug": "Enter a valid web address name.",
-      "invalid_username": "The username must contain at least three characters.",
-      "password_too_short": "Use a password with at least 8 characters.",
+      "invalid_username": "The username must contain between 3 and 64 characters.",
+      "password_too_short": "Use a password with at least 12 characters. A longer passphrase is easier to remember and harder to guess.",
       "entities_required": "Select at least one entity.",
       "weekdays_required": "Select at least one weekday.",
       "slug_in_use": "Another dashboard already uses this web address name.",
       "unsupported_entity": "This entity type is not supported.",
-      "unsupported_irrigation": "Choose individual Rachio zone switches, not controller, rain-delay, hose timer, or schedule switches."
+      "unsupported_irrigation": "Choose individual Rachio zone switches, not controller, rain-delay, hose timer, or schedule switches.",
+      "password_too_long": "Use a password with at most 256 characters."
     }
   }
 }

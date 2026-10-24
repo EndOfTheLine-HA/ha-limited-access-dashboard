@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from typing import Any
 
 import voluptuous as vol
@@ -9,7 +10,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.typing import ConfigType
 
-from .config import DOMAIN, DashboardConfigError, load_settings
+from .config import DEFAULT_DATA_DIR, DOMAIN, DashboardConfigError, load_settings
 from .entities import is_sprinkler
 from .http import DashboardManager, DashboardRuntime, register_views
 from .links import dashboard_url
@@ -84,3 +85,27 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     manager: DashboardManager = hass.data[DOMAIN]
     manager.remove(entry.entry_id)
     return True
+
+
+async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Delete the dashboard's session and audit database with the entry.
+
+    Otherwise a dashboard re-created with the same URL name and username would
+    find the old database and accept the old guest sessions again.
+    """
+    raw = {**entry.data, **entry.options}
+    slug = str(raw.get("slug", ""))
+    path = Path(str(raw.get("database_path", f"{DEFAULT_DATA_DIR}/{slug}.db")))
+    await hass.async_add_executor_job(remove_database, path)
+
+
+def remove_database(path: Path) -> None:
+    """Remove an SQLite database and its side files. Only ever touches *.db."""
+    if path.suffix != ".db":
+        _LOGGER.warning("Not removing %s: not an SQLite .db file", path.name)
+        return
+    for candidate in (path, path.with_name(f"{path.name}-wal"), path.with_name(f"{path.name}-shm")):
+        try:
+            candidate.unlink(missing_ok=True)
+        except OSError as exc:
+            _LOGGER.warning("Could not remove %s: %s", candidate.name, exc)
