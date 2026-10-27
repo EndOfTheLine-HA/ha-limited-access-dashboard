@@ -169,3 +169,14 @@ class Store:
                 "DELETE FROM audit_log WHERE id <= ?",
                 (cursor.lastrowid - AUDIT_LOG_MAX_ROWS,),
             )
+
+    def recent_audit(self, limit: int = 100) -> list[dict]:
+        with self._connect() as connection:
+            return [
+                dict(row)
+                for row in connection.execute(
+                    "SELECT occurred_at, username, action_id, outcome, detail, remote_ip "
+                    "FROM audit_log ORDER BY id DESC LIMIT ?",
+                    (min(100, max(1, limit)),),
+                )
+            ]

@@ -32,6 +32,12 @@ async function start(){
   const doc=await get('/api/design');let payload=await get('/api/state');let selected=0;let custom=[];
   const diagnostics=el('div');diagnostics.setAttribute('role','status');document.querySelector('#design-tools').append(diagnostics);
   const report=message=>{diagnostics.textContent=String(message);diagnostics.className='notice error';};
+  for (const type of ['hass-more-info','hass-action']) grid.addEventListener(type,event=>{
+    event.preventDefault();report(`Card event ${type} is not supported by this guest host.`);
+  });
+  const observeRender=node=>{
+    if(node.updateComplete && typeof node.updateComplete.catch==='function') node.updateComplete.catch(error=>report(`Custom card render failed: ${error.message}`));
+  };
   const sendService=async(domain,service,data)=>{
     const response=await fetch(`${base}/api/card-service`,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-CSRF-Token':doc.csrf_token},body:JSON.stringify({domain,service,data})});
     if(!response.ok){const message=await response.text();report(message);throw Error(message);}
@@ -58,7 +64,7 @@ async function start(){
     if(config.type.startsWith('custom:')){
       const tag=config.type.slice(7);
       if(!customElements.get(tag))throw Error(`Card element ${tag} is not registered. Check its resource URL.`);
-      const node=document.createElement(tag);node.setConfig(structuredClone(config));node.hass=hass;custom.push(node);return node;
+      const node=document.createElement(tag);node.setConfig(structuredClone(config));node.hass=hass;observeRender(node);custom.push(node);return node;
     }
     if(['vertical-stack','horizontal-stack','grid'].includes(config.type)){
       const node=el('div',undefined,'card-stack');
@@ -75,10 +81,13 @@ async function start(){
     throw Error(`Built-in card type ${config.type} is not implemented in the guest host yet. Try a custom: card resource or an entity card.`);
   };
   window.loadCardHelpers=async()=>({createCardElement:build,createRowElement:config=>entityCard(config.entity,config.name,'compact')});
-  for(const resource of doc.resources || []){
-    try{await Promise.race([import(resource),new Promise((_,reject)=>setTimeout(()=>reject(Error('Module load timed out')),10000))]);}
+  // Load concurrently so unreachable modules cost at most one timeout window.
+  await Promise.all((doc.resources || []).map(async resource=>{
+    let timeout;
+    try{await Promise.race([import(resource),new Promise((_,reject)=>{timeout=setTimeout(()=>reject(Error('Module load timed out')),10000);})]);}
     catch(error){report(`Resource ${resource}: ${error.message}`);}
-  }
+    finally{clearTimeout(timeout);}
+  }));
   const render=()=>{
     const d=doc.design;custom=[];
     document.documentElement.dataset.theme=d.theme;
@@ -109,7 +118,7 @@ async function start(){
     if (payload.available === false && next.available) { location.reload(); return; }
     grid.hidden = !next.available;
     payload=next;hass=restrictedHass(payload,sendService,report);
-    for(const card of custom){try{card.hass=hass;}catch(error){report(error.message);}}
+    for(const card of custom){try{card.hass=hass;observeRender(card);}catch(error){report(error.message);}}
     for(const state of payload.cards){for(const node of grid.querySelectorAll(`[data-entity-id="${CSS.escape(state.entity_id)}"]`)){
       node.classList.toggle('active',state.active);node.classList.toggle('unavailable',!state.available);
       const label=node.querySelector('.state-value');if(label)label.textContent=`${state.state}${state.unit?` ${state.unit}`:''}`;

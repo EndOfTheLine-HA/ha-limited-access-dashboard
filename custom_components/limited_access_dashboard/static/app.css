@@ -78,7 +78,7 @@ input:focus { outline: 2px solid var(--ha-blue); outline-offset: 2px; }
 [data-theme=light] { color-scheme:light; color:#20242a; --ha-muted:#505863; --ha-line:#c4c9d0; }
 [data-theme=light] .tile-action { background:#e2e7ec; color:#20242a; }
 #guest-editor { margin:20px 0; }
-@media(max-width:900px) { .section-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+@media(max-width:900px) { .section-grid { grid-template-columns:repeat(min(var(--dashboard-columns,3),2),minmax(0,1fr)); } }
 @media(max-width:560px) { .section-grid { grid-template-columns:1fr; } }
 
 @media (max-width: 560px) {

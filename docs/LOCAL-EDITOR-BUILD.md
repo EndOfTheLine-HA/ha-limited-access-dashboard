@@ -1,6 +1,6 @@
 # Dashboard editor and compatibility testing
 
-Version 0.6.0 includes the owner appearance editor, the 0.5.0 session and login
+Version 0.6.1 includes the owner appearance editor, the 0.5.0 session and login
 fixes, and the fix for light buttons changing enabled state on every refresh.
 Custom Lovelace/HACS card support remains experimental.
 
@@ -21,7 +21,12 @@ has simulated owner authentication; do not expose it as a real guest dashboard.
 ## Install a manual integration build for HA testing
 
 HACS users can update normally. To create a manual archive from the repository,
-run `python scripts/build_release.py`; the archive is written to `dist/`.
+commit your changes, then run `python scripts/build_release.py`; the archive is
+written to `dist/`. The builder reads committed Git blobs (HEAD by default),
+ignores working-tree and untracked files, and uses uncompressed fixed-metadata
+ZIP entries for the same bytes across operating systems and zlib versions.
+Pass `--ref v0.6.1` to build a particular tag. Tagged releases are built and
+published by CI only after the full CI, HACS and Hassfest jobs pass.
 Extract it into the HA configuration directory after backing up the existing
 integration and its data.
 
@@ -58,7 +63,13 @@ change HA's overall administrator permissions.
 - Set one to four desktop columns, dark/light appearance, colors and density.
   Small screens automatically use fewer columns. The preview shows placement;
   use the guest page for functional card testing.
-- Save the dashboard. Data persists in the existing per-dashboard SQLite database.
+- Save the dashboard. Data persists in the per-dashboard SQLite database.
+- After Configure adds entities to a saved layout, the owner editor lists them
+  under **Approved entities not placed**. Choose where to place them. Removed
+  entities are pruned from owner/guest presentation without resetting other
+  placements. A custom card explicitly referencing a removed entity is removed
+  as a whole; backend permission checks still apply to every custom-card action.
+- **View recent activity** below the owner editor shows the latest 100 audit rows.
 
 The owner controls available entities/actions and module URLs. When **Allow guest
 customization** is on, guests can change presentation and arrange the already
@@ -86,8 +97,10 @@ Install the card in HACS as usual. In the owner editor:
 
 Use the actual card type and an entity already approved for that dashboard.
 Save, open the guest page, and observe the result. Missing modules/elements,
-unsupported APIs and failed actions produce visible messages. Browser developer
-tools provide additional details from individual card libraries.
+bridge failures, explicit unsupported API calls and unsupported `hass-action` /
+`hass-more-info` events produce visible messages. Failures in asynchronous card
+code may appear only in browser developer tools; not every incompatibility can
+be intercepted. Modules load concurrently with a 10-second timeout window.
 
 This host loads real JavaScript modules and passes their elements `setConfig`
 and `hass`. It supplies approved states and a restricted `callService` bridge,
@@ -114,6 +127,33 @@ iframe sandbox. Only the owner may add resource URLs. Do not treat filtering the
 entity permissions, schedules and CSRF for service calls. External module URLs
 are not accepted. Use a separate browser profile for guest-card compatibility
 tests so installed cards do not share the owner's browser storage.
+
+Additional host limits:
+
+- The guest host only defines basic `ha-card` and `ha-icon` elements. The icon
+  primitive renders a generic diamond; the full HA frontend is not loaded.
+- Entity/device/area registries are empty placeholders; `hass.connection` is not
+  provided. Cards requiring registry metadata or HA's internal Lit components
+  may fail to initialize or render.
+- The state payload exposes a limited attribute allowlist, not every HA state
+  attribute. For example, entity pictures and climate control metadata are not
+  supplied. Language is English and the adapter unit-system metadata is metric;
+  this does not convert the actual entity values or their units.
+- Polling creates a new adapter and state objects every five seconds. Cards
+  depending on HA subscription/connection behavior may not update correctly.
+- Dashboard CSP blocks eval/JavaScript templates, external network requests,
+  external images, fonts and blob URLs. Packages such as button-card templates,
+  card-mod, or cards depending on the Lovelace frontend need individual testing;
+  no compatibility claim is made for those packages.
+
+On upgrade, data under HA's configured `limited-access-dashboard-data` directory
+moves from slug filenames to stable configuration entry IDs. URL-name edits then
+keep layouts and history. Existing external YAML database paths are copied into
+the managed directory and the original is retained. The integration never deletes
+external databases. Old orphaned files from URL renames made before this fix are
+not automatically recovered or removed; restore needed layouts from a backup
+before editing them. Removing an entry deletes its managed layouts, sessions and
+audit history.
 
 This is intended to discover compatibility gaps with the actual cards you use.
 It does not claim universal compatibility with Lovelace or HACS cards.

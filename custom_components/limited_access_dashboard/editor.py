@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+import logging
 from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
@@ -13,10 +15,24 @@ from homeassistant.components.http import KEY_HASS
 from homeassistant.exceptions import Unauthorized
 
 from .config import DOMAIN, URL_ROOT
-from .design import default_design, validate_design, validate_resources
+from .design import default_design, reconcile_design, validate_design, validate_resources
 from .http import ManagedView
 from .media import action_data
 from .security import tokens_match
+
+_LOGGER = logging.getLogger(__name__)
+
+
+async def read_json(request, maximum: int):
+    body = bytearray()
+    async for chunk in request.content.iter_chunked(4096):
+        body.extend(chunk)
+        if len(body) > maximum:
+            raise web.HTTPRequestEntityTooLarge(max_size=maximum, actual_size=len(body))
+    try:
+        return json.loads(body)
+    except (ValueError, UnicodeError) as exc:
+        raise web.HTTPBadRequest(text="Invalid JSON") from exc
 
 
 async def design_document(runtime):
@@ -30,17 +46,31 @@ async def design_document(runtime):
     }
     if runtime.settings.initial_design and not has_owner_design:
         try:
-            owner["design"] = validate_design(runtime.settings.initial_design, entities)
+            owner["design"] = reconcile_design(runtime.settings.initial_design, entities)
         except (ValueError, TypeError):
             pass
     owner["allow_guest_customization"] = runtime.settings.allow_guest_customization
-    # Configured entities can be removed later; stale presentation never grants access.
+    owner["design"] = reconcile_design(owner["design"], entities)
     return owner
 
 
 def require_owner(user):
     if user is None or not user.is_owner:
         raise Unauthorized
+
+
+@websocket_api.websocket_command(
+    {vol.Required("type"): f"{DOMAIN}/audit", vol.Required("entry_id"): str}
+)
+@websocket_api.async_response
+async def websocket_audit(hass, connection, msg):
+    require_owner(connection.user)
+    runtime = next((r for r in hass.data[DOMAIN].runtimes() if r.entry_id == msg["entry_id"]), None)
+    if runtime is None:
+        connection.send_error(msg["id"], "not_found", "Dashboard not found")
+        return
+    rows = await hass.async_add_executor_job(runtime.store.recent_audit)
+    connection.send_result(msg["id"], rows)
 
 
 @websocket_api.websocket_command(
@@ -141,7 +171,7 @@ class DesignView(ManagedView):
             guest = await runtime.hass.async_add_executor_job(runtime.store.get_design, "guest")
             if guest:
                 try:
-                    design = validate_design(
+                    design = reconcile_design(
                         guest,
                         [c.entity_id for c in runtime.settings.cards],
                         approved=owner["design"],
@@ -176,7 +206,7 @@ class DesignView(ManagedView):
             raise web.HTTPRequestEntityTooLarge(max_size=131072, actual_size=request.content_length)
         try:
             design = validate_design(
-                await request.json(),
+                await read_json(request, 131072),
                 [c.entity_id for c in runtime.settings.cards],
                 approved=owner["design"],
             )
@@ -247,7 +277,9 @@ class CardServiceView(ManagedView):
         if not runtime.limiter.allow(f"action:{principal[0].username}", limit=1, window_seconds=2):
             raise web.HTTPTooManyRequests()
         try:
-            data = await request.json()
+            data = await read_json(request, 4096)
+            if not isinstance(data, dict):
+                raise ValueError("Service request must be an object")
             await call_restricted_service(runtime, data["domain"], data["service"], data["data"])
         except (ValueError, KeyError, TypeError) as exc:
             await runtime.audit(
@@ -258,18 +290,32 @@ class CardServiceView(ManagedView):
                 detail="unsupported entity or action",
             )
             raise web.HTTPBadRequest(text=str(exc)) from exc
+        except web.HTTPException:
+            raise
+        except Exception as exc:
+            _LOGGER.exception("Limited Access Dashboard custom-card action failed")
+            await runtime.audit(
+                request,
+                username=principal[0].username,
+                action_id="custom_card",
+                outcome="error",
+                detail=f"{data['domain']}.{data['service']} {data['data'].get('entity_id')} "
+                f"{type(exc).__name__}",
+            )
+            raise web.HTTPBadGateway(text="Home Assistant could not complete the action") from exc
         await runtime.audit(
             request,
             username=principal[0].username,
             action_id="custom_card",
             outcome="success",
-            detail=f"{data['domain']}.{data['service']}",
+            detail=f"{data['domain']}.{data['service']} {data['data'].get('entity_id')}",
         )
         return web.json_response({"success": True})
 
 
 def register_editor(hass, manager):
     websocket_api.async_register_command(hass, websocket_editor)
+    websocket_api.async_register_command(hass, websocket_audit)
     for view in (EditorStaticView(manager), DesignView(manager), CardServiceView(manager)):
         hass.http.register_view(view)
     frontend.async_register_built_in_panel(

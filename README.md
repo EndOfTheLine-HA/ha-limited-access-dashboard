@@ -88,7 +88,8 @@ Guests who already have a shorter password keep it until you change it.
   but no live states.
 - Each address gets five sign-in attempts per five minutes, and a dashboard
   accepts at most fifty attempts per five minutes in total.
-- Removing a dashboard also deletes its session and audit database.
+- Removing a dashboard also deletes its managed database, including saved layouts,
+  sessions and audit history.
 
 If Home Assistant sits behind your own reverse proxy, configure
 `use_x_forwarded_for` and `trusted_proxies` in its `http:` settings so the
@@ -162,6 +163,15 @@ modules: they execute on the guest page's origin and are not sandboxed.
 
 The native integration is tested against Home Assistant 2026.9.4. All required
 editor assets ship inside the integration; no separate editor server is needed.
+
+After saving a layout, entities added in **Configure** appear under **Approved
+entities not placed** in the owner editor. Place them where you want them;
+approving an entity does not automatically add a card. Removed entities and
+custom cards that explicitly reference them are removed from the displayed
+layout while unaffected placements and guest styling are preserved.
+
+The owner can select **View recent activity** below the editor to read the last
+100 recorded sign-ins and commands.
 
 ## What is planned
 

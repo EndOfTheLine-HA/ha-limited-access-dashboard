@@ -66,6 +66,8 @@ def validate_resources(resources: Any) -> list[str]:
     for resource in resources:
         if not isinstance(resource, str) or len(resource) > 512:
             raise ValueError("Invalid resource URL")
+        if any(ord(char) < 32 or ord(char) == 127 for char in resource):
+            raise ValueError("Resource URLs cannot contain control characters")
         parsed = urlsplit(resource)
         decoded = unquote(parsed.path)
         if (
@@ -95,6 +97,8 @@ def _color(value: Any) -> str:
 
 
 def _entity_refs(value: Any, allowed: set[str], key: str = "") -> None:
+    # Configuration lint only. Restricted states and server-side service checks
+    # enforce permissions regardless of a custom card's own configuration keys.
     if isinstance(value, dict):
         for name, child in value.items():
             _entity_refs(child, allowed, name)
@@ -180,3 +184,37 @@ def validate_design(raw: Any, entities: list[str], *, approved: dict | None = No
             clean_view["sections"].append(clean_section)
         result["views"].append(clean_view)
     return result
+
+
+def reconcile_design(raw: dict, entities: list[str], *, approved: dict | None = None) -> dict:
+    """Remove stale placements without discarding the rest of a saved layout.
+
+    New entities stay unplaced: only the owner decides where approved controls
+    appear. Custom cards referencing removed entities are removed as a unit.
+    """
+    cleaned = deepcopy(raw)
+    allowed = set(entities)
+    approved_configs = {
+        json.dumps(card["config"], sort_keys=True)
+        for view in (approved or {}).get("views", [])
+        for section in view["sections"]
+        for card in section["cards"]
+        if card["type"] == "lovelace"
+    }
+    for view in cleaned.get("views", []):
+        for section in view.get("sections", []):
+            cards = []
+            for card in section.get("cards", []):
+                if card.get("type") == "entity":
+                    if card.get("entity") in allowed:
+                        cards.append(card)
+                elif card.get("type") == "lovelace":
+                    config = card.get("config")
+                    try:
+                        _entity_refs(config, allowed)
+                    except ValueError:
+                        continue
+                    if approved is None or json.dumps(config, sort_keys=True) in approved_configs:
+                        cards.append(card)
+            section["cards"] = cards
+    return validate_design(cleaned, entities, approved=approved)

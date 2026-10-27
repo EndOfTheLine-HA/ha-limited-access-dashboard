@@ -9,7 +9,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock, Mock, patch
 
 sys.path.insert(0, sys.argv[1])
 from aiohttp import web  # noqa: E402
@@ -17,6 +17,10 @@ from aiohttp.test_utils import TestClient, TestServer  # noqa: E402
 from homeassistant.core import State  # noqa: E402
 from homeassistant.exceptions import Unauthorized  # noqa: E402
 
+from custom_components.limited_access_dashboard import (  # noqa: E402
+    async_remove_entry,
+    async_setup_entry,
+)
 from custom_components.limited_access_dashboard.config import (  # noqa: E402
     WeeklySchedule,
     load_settings,
@@ -28,6 +32,7 @@ from custom_components.limited_access_dashboard.editor import (  # noqa: E402
     DesignView,
     call_restricted_service,
     require_owner,
+    websocket_audit,
     websocket_editor,
 )
 from custom_components.limited_access_dashboard.http import (  # noqa: E402
@@ -38,7 +43,63 @@ from custom_components.limited_access_dashboard.security import credential_finge
 from custom_components.limited_access_dashboard.storage import Store  # noqa: E402
 
 
+async def check_entry_migration():
+    with TemporaryDirectory() as directory:
+        config_root = Path(directory) / "core-config"
+        legacy = config_root / "limited-access-dashboard-data" / "guest.db"
+        old = Store(legacy)
+        old.save_design("owner", {"design": default_design(["light.guest"]), "resources": []})
+        entry = SimpleNamespace(
+            entry_id="ENTRY",
+            unique_id="guest",
+            title="Guest",
+            data={
+                "slug": "guest",
+                "username": "guest",
+                "password_hash": "$argon2id$test",
+                "entities": ["light.guest"],
+            },
+            options={},
+        )
+
+        def update(current, **changes):
+            for key, value in changes.items():
+                setattr(current, key, value)
+
+        async def executor(func, *args):
+            return func(*args)
+
+        manager = DashboardManager()
+        hass = SimpleNamespace(
+            config=SimpleNamespace(
+                path=lambda *parts: str(config_root.joinpath(*parts)), time_zone="UTC"
+            ),
+            async_add_executor_job=executor,
+            data={"limited_access_dashboard": manager},
+            config_entries=SimpleNamespace(async_update_entry=update),
+            states=SimpleNamespace(get=lambda _: None),
+        )
+        registry = SimpleNamespace(async_get_or_create=Mock())
+        with (
+            patch("custom_components.limited_access_dashboard.is_sprinkler", return_value=False),
+            patch("custom_components.limited_access_dashboard.dr.async_get", return_value=registry),
+            patch(
+                "custom_components.limited_access_dashboard.dashboard_url", return_value="/guest"
+            ),
+        ):
+            assert await async_setup_entry(hass, entry)
+            path = Path(entry.data["database_path"])
+            assert path == legacy.parent / "ENTRY.db" and not legacy.exists()
+            entry.options = {"slug": "renamed"}
+            assert await async_setup_entry(hass, entry)
+            assert entry.runtime_data.store.get_design("owner") is not None
+            assert entry.runtime_data.settings.database_path == path
+            await async_remove_entry(hass, entry)
+            assert not path.exists()
+
+
 async def main():
+    await check_entry_migration()
     with TemporaryDirectory() as directory:
         entities = ["light.guest", "sensor.temperature", "switch.zone"]
         settings = load_settings(
@@ -80,6 +141,12 @@ async def main():
             else:
                 raise AssertionError("Non-owner accepted")
         require_owner(SimpleNamespace(is_owner=True))
+        login_csp = runtime.html("login.html").headers["Content-Security-Policy"]
+        dashboard_csp = runtime.html("dashboard.html", account=settings.account).headers[
+            "Content-Security-Policy"
+        ]
+        assert "unsafe-inline" not in login_csp and "data:" not in login_csp
+        assert "unsafe-inline" in dashboard_csp
         from homeassistant.helpers.http import current_request
 
         for owner in (True, False):
@@ -156,6 +223,38 @@ async def main():
             runtime.settings = replace(runtime.settings, schedule=WeeklySchedule({}))
             assert (await (await client.get("/test/api/design")).json())["entities"] == []
             runtime.settings = replace(runtime.settings, schedule=None)
+            service = {"domain": "light", "service": "toggle", "data": {"entity_id": "light.guest"}}
+            runtime.limiter = type(runtime.limiter)()
+            assert (
+                await client.post("/test/api/card-service", json=service, headers=headers)
+            ).status == 200
+            assert "light.guest" in runtime.store.recent_audit()[0]["detail"]
+            runtime.limiter = type(runtime.limiter)()
+            hass.services.async_call.side_effect = RuntimeError("private diagnostic")
+            failed = await client.post("/test/api/card-service", json=service, headers=headers)
+            assert failed.status == 502 and "private diagnostic" not in await failed.text()
+            assert runtime.store.recent_audit()[0]["outcome"] == "error"
+            assert "light.guest" in runtime.store.recent_audit()[0]["detail"]
+            hass.services.async_call.side_effect = None
+            runtime.limiter = type(runtime.limiter)()
+
+            async def oversized():
+                for _ in range(3):
+                    yield b" " * 2048
+
+            assert (
+                await client.post("/test/api/card-service", data=oversized(), headers=headers)
+            ).status == 413
+            await websocket_audit.__wrapped__(hass, connection, {"id": 2, "entry_id": "test"})
+            assert connection.send_result.call_args.args[1][0]["outcome"] == "error"
+            connection.user = SimpleNamespace(is_owner=False)
+            try:
+                await websocket_audit.__wrapped__(hass, connection, {"id": 3, "entry_id": "test"})
+            except Unauthorized:
+                pass
+            else:
+                raise AssertionError("Non-owner read audit")
+            connection.user = SimpleNamespace(is_owner=True)
             runtime.settings = replace(
                 runtime.settings,
                 account=replace(

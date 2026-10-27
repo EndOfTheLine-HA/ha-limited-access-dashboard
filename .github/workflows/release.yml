@@ -1,0 +1,36 @@
+name: Publish validated release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    uses: ./.github/workflows/ci.yml
+  validation:
+    uses: ./.github/workflows/validate.yml
+  publish:
+    needs: [ci, validation]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.14"
+      - name: Check tag and build committed source
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          python -c 'import json, os; v=json.load(open("custom_components/limited_access_dashboard/manifest.json"))["version"]; assert os.environ["RELEASE_TAG"] == "v" + v'
+          python scripts/build_release.py
+      - name: Publish release with validated archive
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          gh release create "$RELEASE_TAG" dist/*.zip --verify-tag --latest --title "Limited Access Dashboard $RELEASE_TAG" --notes-file "docs/releases/$RELEASE_TAG.md"

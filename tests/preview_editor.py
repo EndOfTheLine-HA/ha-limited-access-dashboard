@@ -93,6 +93,7 @@ class Handler(BaseHTTPRequestHandler):
 <lad-editor-panel></lad-editor-panel><script type="module">
 import '/limited-access-dashboard/editor-assets/editor-panel.js';
 document.querySelector('lad-editor-panel').hass={user:{is_owner:true},callWS:async msg=>{
+if(msg.type==='limited_access_dashboard/audit')return [];
 if(!msg.entry_id)return [{entry_id:'demo',title:'Demo dashboard'}];
 if(msg.document)await fetch('/fixture/document',{method:'POST',body:JSON.stringify(msg.document)});
 return (await fetch('/fixture/document')).json();}};

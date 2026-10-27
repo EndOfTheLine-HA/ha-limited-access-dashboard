@@ -24,6 +24,11 @@ upgrading. Treat filesystem access to those files as administrative access.
 
 ## Standalone application security boundary
 
+The legacy standalone application has a separate implementation and version.
+The native integration's v0.5+ session revocation and aggregate login limits do
+not apply to it. Its shorter minimum password policy and process-local limiter
+are legacy behavior; prefer the native integration for new installations.
+
 The dashboard can invoke only actions declared by the server owner in `config.yml`.
 The browser cannot supply a Home Assistant entity ID, service name, webhook URL,
 or payload. Home Assistant webhooks should remain `local_only: true` and should

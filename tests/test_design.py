@@ -49,6 +49,8 @@ def test_tabs_sections_colors_and_duplicate_entity_placements():
         "/local/card.html",
         "/local/card.js#fragment",
         "/local/..\\secrets.js",
+        "/local/card\n.js",
+        "/local/card.js?token=\tvalue",
     ],
 )
 def test_rejects_external_or_traversing_resources(resource):
@@ -97,3 +99,28 @@ def test_rejects_invalid_layout(key, value):
     raw[key] = value
     with pytest.raises(ValueError):
         design.validate_design(raw, ENTITIES)
+
+
+def test_entity_removal_preserves_guest_appearance_and_unaffected_custom_cards():
+    owner = design.default_design(ENTITIES)
+    owner["views"][0]["sections"][0]["cards"].extend(
+        [
+            {"type": "lovelace", "config": {"type": "custom:keep", "entity": "light.guest"}},
+            {
+                "type": "lovelace",
+                "config": {"type": "custom:removed", "entity": "sensor.temperature"},
+            },
+        ]
+    )
+    guest = deepcopy(owner)
+    guest["views"][0]["title"] = "My favorites"
+    guest["accent"] = "#123456"
+    entities = ["light.guest", "switch.new"]
+    cleaned_owner = design.reconcile_design(owner, entities)
+    cleaned_guest = design.reconcile_design(guest, entities, approved=cleaned_owner)
+    assert cleaned_guest["accent"] == "#123456"
+    assert cleaned_guest["views"][0]["title"] == "My favorites"
+    cards = cleaned_guest["views"][0]["sections"][0]["cards"]
+    assert len(cards) == 2
+    assert cards[1]["config"]["type"] == "custom:keep"
+    assert not any(card.get("entity") == "switch.new" for card in cards)

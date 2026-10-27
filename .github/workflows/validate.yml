@@ -1,6 +1,7 @@
 name: HACS and Home Assistant validation
 
 on:
+  workflow_call:
   push:
   pull_request:
   schedule:

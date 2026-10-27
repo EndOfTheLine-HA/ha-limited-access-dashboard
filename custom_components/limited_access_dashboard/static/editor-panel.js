@@ -25,7 +25,15 @@ class LimitedAccessEditorPanel extends HTMLElement {
           const node=createEditor({document:doc,entities:doc.entities,owner:true,onSave:async document=>{
             await this._hass.callWS({type:'limited_access_dashboard/editor',entry_id:entryId,document});
           }});
-          editor.replaceChildren(link,node);
+          const auditButton=el('button','View recent activity');auditButton.type='button';
+          const activity=el('pre');activity.style.cssText='white-space:pre-wrap;overflow-wrap:anywhere';
+          auditButton.onclick=async()=>{
+            try{
+              const rows=await this._hass.callWS({type:'limited_access_dashboard/audit',entry_id:entryId});
+              activity.textContent=rows.length?rows.map(row=>`${row.occurred_at} ${row.username} ${row.action_id} ${row.outcome} ${row.detail} (${row.remote_ip})`).join('\n'):'No recorded activity.';
+            }catch(error){activity.textContent=error.message || String(error);}
+          };
+          editor.replaceChildren(link,node,auditButton,activity);
         }catch(error){editor.replaceChildren(el('p',error.message || String(error)));}
       };
       const requested=new URLSearchParams(location.search).get('dashboard');

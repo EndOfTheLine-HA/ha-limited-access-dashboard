@@ -453,9 +453,9 @@ async def check_security():
         # Removing the entry deletes its database, and nothing but *.db files.
         keep = root / "keep.txt"
         keep.write_text("not a database", encoding="utf-8")
-        remove_database(keep)
+        remove_database(keep, root)
         assert keep.exists()
-        remove_database(settings.database_path)
+        remove_database(settings.database_path, root)
         assert not settings.database_path.exists()
 
 

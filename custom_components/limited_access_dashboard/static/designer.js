@@ -83,6 +83,25 @@ export function createEditor({ document: initial, entities, owner = false, onSav
     root.append(el('h2', owner ? 'Edit guest dashboard' : 'Customize appearance'));
     root.append(el('p', owner ? 'Arrange approved entities into tabs and sections. Entity access and schedules stay in the integration configuration.' : 'Change the appearance of this guest dashboard. The homeowner controls which entities and actions are available.'));
     const d = doc.design;
+    if (owner) {
+      const placed = new Set();
+      const scan = value => {
+        if (typeof value === 'string') placed.add(value);
+        else if (Array.isArray(value)) value.forEach(scan);
+        else if (value && typeof value === 'object') Object.values(value).forEach(scan);
+      };
+      for (const view of d.views) for (const section of view.sections) for (const card of section.cards) scan(card.type === 'entity' ? card.entity : card.config);
+      const unplaced = entities.filter(entity => !placed.has(entity.entity_id));
+      if (unplaced.length) {
+        const notice = el('div', undefined, 'lad-row');
+        notice.append(el('h3', 'Approved entities not placed'));
+        notice.append(el('p', 'These entities are approved but are not displayed. Add a card to the selected section.'));
+        for (const entity of unplaced) notice.append(button(`Add ${entity.name}`, () => {
+          d.views[viewIndex].sections[sectionIndex].cards.push({type:'entity',entity:entity.entity_id});render();
+        }));
+        root.append(notice);
+      }
+    }
     const fields = el('div', undefined, 'lad-fields'); root.append(fields);
     field(fields, 'Theme', d.theme, v => {
       d.theme = v; d.background = v === 'light' ? '#f3f5f7' : '#11131a';

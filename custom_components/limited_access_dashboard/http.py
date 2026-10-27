@@ -84,6 +84,8 @@ class DashboardRuntime:
         return f"{self.settings.base_path}{suffix}"
 
     def html(self, template_name: str, **context: Any) -> web.Response:
+        styles = "'self' 'unsafe-inline'" if template_name == "dashboard.html" else "'self'"
+        images = "'self' data:" if template_name == "dashboard.html" else "'self'"
         body = self.templates[template_name].render(
             title=self.settings.title,
             base_path=self.settings.base_path,
@@ -97,8 +99,8 @@ class DashboardRuntime:
             headers={
                 "Cache-Control": "no-store",
                 "Content-Security-Policy": (
-                    "default-src 'none'; style-src 'self' 'unsafe-inline'; "
-                    "script-src 'self'; img-src 'self' data:; "
+                    f"default-src 'none'; style-src {styles}; "
+                    f"script-src 'self'; img-src {images}; "
                     "connect-src 'self'; form-action 'self'; frame-ancestors 'none'; "
                     "base-uri 'none'"
                 ),

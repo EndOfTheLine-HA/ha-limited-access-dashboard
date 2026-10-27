@@ -11,7 +11,7 @@ DOMAIN = "limited_access_dashboard"
 URL_ROOT = "/limited-access-dashboard"
 DEFAULT_SESSION_HOURS = 8
 DEFAULT_DURATION_MINUTES = 5
-DEFAULT_DATA_DIR = "/config/limited-access-dashboard-data"
+DEFAULT_DATA_DIR = "limited-access-dashboard-data"
 SUPPORTED_CONTROL_DOMAINS = (
     "button",
     "input_boolean",
@@ -287,8 +287,9 @@ def legacy_to_entry(raw: dict[str, Any], *, default_timezone: str) -> dict[str, 
         "sprinkler_entities": [card.entity_id for card in settings.sprinklers],
         "schedule": raw.get("schedule", "always"),
         "cookie_secure": settings.cookie_secure,
-        "database_path": str(settings.database_path),
     }
+    if "database_path" in raw:
+        result["database_path"] = str(raw["database_path"])
     if settings.account.active_from is not None:
         result["active_from"] = settings.account.active_from.isoformat()
     if settings.account.expires_at is not None:
