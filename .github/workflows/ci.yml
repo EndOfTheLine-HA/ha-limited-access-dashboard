@@ -48,5 +48,5 @@ jobs:
       - run: docker build -t limited-access-dashboard:test .
       - name: Test installed application in Python 3.14 container
         run: |
-          docker run --rm --user root --entrypoint sh -v "$PWD/tests:/tests:ro" -v "$PWD/custom_components:/custom_components:ro" limited-access-dashboard:test -c 'pip install pytest httpx && python -m pytest /tests -q'
+          docker run --rm --user root --entrypoint sh -v "$PWD/tests:/tests:ro" -v "$PWD/custom_components:/custom_components:ro" -v "$PWD/scripts:/scripts:ro" limited-access-dashboard:test -c 'apt-get update && apt-get install -y --no-install-recommends git && pip install pytest httpx && python -m pytest /tests -q'
 
