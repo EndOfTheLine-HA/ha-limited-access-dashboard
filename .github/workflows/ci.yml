@@ -18,6 +18,7 @@ jobs:
           cache: pip
       - run: pip install homeassistant==2026.9.4 argon2-cffi==25.1.0
       - run: python tests/verify_ha_flow.py "$PWD"
+      - run: python tests/verify_editor_backend.py "$PWD"
 
   test:
     runs-on: ubuntu-latest
@@ -35,6 +36,8 @@ jobs:
       - run: ruff check .
       - run: ruff format --check .
       - run: pytest -q
+      - run: node --test tests/test_refresh.cjs
+      - run: python scripts/build_release.py
       - run: pip-audit --skip-editable
 
   docker:

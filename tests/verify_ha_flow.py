@@ -149,6 +149,7 @@ async def check_flows():
                 result = await item.async_step_share()
                 assert result["description_placeholders"]["username"] == "visitor"
                 assert result["description_placeholders"]["dashboard_url"].endswith("/guest")
+                assert result["description_placeholders"]["editor_url"].endswith("?dashboard=guest")
             item.async_create_entry = Mock(return_value={"type": "create_entry"})
             item.hass.config_entries.async_update_entry = Mock()
             if cls is flow.LimitedAccessDashboardOptionsFlow:
@@ -489,11 +490,30 @@ async def main():
         result = await item.async_step_schedule_window(
             {"weekdays": ["tuesday"], "start_time": "22:00:00", "end_time": "06:00:00"}
         )
-        assert result["step_id"] == "share"
+        expected_step = "share" if cls is flow.LimitedAccessDashboardOptionsFlow else "appearance"
+        assert result["step_id"] == expected_step
         assert item._data["schedule"] == {"tuesday": ["22:00-06:00"]}
         result = await item.async_step_schedule({"always_access": True})
-        assert result["step_id"] == "share"
+        assert result["step_id"] == expected_step
         assert item._data["schedule"] == "always"
+        if cls is flow.LimitedAccessDashboardConfigFlow:
+            item._data["entities"] = ["light.guest", "sensor.temperature"]
+            appearance = {
+                "theme": "light",
+                "columns": "2",
+                "density": "compact",
+                "grouping": "by_type",
+                "accent": "#112233",
+            }
+            invalid = await item.async_step_appearance({**appearance, "accent": "wrong"})
+            assert invalid["errors"] == {"base": "invalid_appearance"}
+            assert (await item.async_step_appearance(appearance))["step_id"] == "share"
+            assert item._data["initial_design"]["columns"] == 2
+            assert [v["title"] for v in item._data["initial_design"]["views"]] == [
+                "Lights",
+                "Sensors",
+            ]
+            assert item._data.get("allow_guest_customization", False) is False
     await check_flows()
     await check_media()
     await check_security()

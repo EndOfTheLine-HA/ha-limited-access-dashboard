@@ -5,7 +5,24 @@
 Please do not open a public issue for a suspected vulnerability. Use GitHub's
 private vulnerability reporting feature for this repository.
 
-## Security boundary
+## Native Home Assistant integration
+
+The HA owner chooses approved entities, credentials and access schedules. Guest
+requests are authenticated using separate dashboard sessions; the server checks
+entity and action permissions, schedules and CSRF tokens. Guests do not receive
+a Home Assistant access token. Use HTTPS for guest sign-in.
+
+Only the HA owner can save the main appearance document, opt into guest editing,
+or configure custom-card resources. Guest editing changes presentation only.
+Custom Lovelace/HACS modules are trusted JavaScript running on the guest page's
+origin, not in a sandbox. They can access browser storage available on that
+origin. Install only trusted modules and use a separate browser profile when
+testing guest cards. Filtering the card's `hass` adapter does not sandbox code.
+
+Back up the integration configuration and `limited-access-dashboard-data` before
+upgrading. Treat filesystem access to those files as administrative access.
+
+## Standalone application security boundary
 
 The dashboard can invoke only actions declared by the server owner in `config.yml`.
 The browser cannot supply a Home Assistant entity ID, service name, webhook URL,
@@ -27,5 +44,5 @@ connection and request limits at their reverse proxy or firewall.
 
 ## Supported versions
 
-Until the first stable release, only the latest tagged version is supported.
+Only the latest stable tagged release is supported.
 

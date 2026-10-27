@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sqlite3
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -45,6 +46,9 @@ class Store:
     def _initialize(self) -> None:
         with self._connect() as connection:
             connection.execute("PRAGMA journal_mode=WAL")
+            connection.execute(
+                "CREATE TABLE IF NOT EXISTS designs (name TEXT PRIMARY KEY, document TEXT NOT NULL)"
+            )
             connection.execute(
                 """
                 CREATE TABLE IF NOT EXISTS sessions (
@@ -98,6 +102,22 @@ class Store:
                 ),
             )
         return token, Session(username, csrf_token, expires_at, credential)
+
+    def get_design(self, name: str) -> dict | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT document FROM designs WHERE name = ?", (name,)
+            ).fetchone()
+        return json.loads(row["document"]) if row else None
+
+    def save_design(self, name: str, document: dict) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                "INSERT OR REPLACE INTO designs (name, document) VALUES (?, ?)",
+                (name, json.dumps(document, allow_nan=False)),
+            )
+            if name == "owner":
+                connection.execute("DELETE FROM designs WHERE name = 'guest'")
 
     def get_session(self, token: str) -> Session | None:
         now = datetime.now(UTC)

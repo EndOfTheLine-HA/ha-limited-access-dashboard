@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% block scripts %}<script type="module" src="/limited-access-dashboard/editor-assets/cards.js"></script>{% endblock %}
 {% block content %}
   <header class="ha-header">
     <div>
@@ -23,8 +24,10 @@
   {% endif %}
 
   <div id="availability" class="notice error{% if available %} hidden{% endif %}" role="alert">{{ reason }}</div>
+  <div id="design-tools"></div>
+  <nav id="dashboard-tabs" aria-label="Dashboard tabs"></nav>
 
-  <section class="lovelace-grid" aria-label="Available controls" data-state-url="{{ base_path }}/api/state">
+  <section class="lovelace-grid" aria-label="Available controls" data-state-url="{{ base_path }}/api/state" data-base-path="{{ base_path }}">
     {% for card in cards %}
       <article class="ha-card{% if card.action == 'media' %} media-card{% endif %}{% if card.active %} active{% endif %}{% if not card.available %} unavailable{% endif %}" data-entity-id="{{ card.entity_id }}">
         <div class="card-copy">

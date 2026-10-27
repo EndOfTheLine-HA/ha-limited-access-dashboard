@@ -9,8 +9,9 @@ Home Assistant system.
 
 Limited Access Dashboard creates a separate, mobile-friendly page for a child,
 contractor, cleaner, sitter, landscaper, Airbnb/Vrbo guest, or visitor. You
-choose what appears and when it can be used. The person using it cannot edit the
-dashboard, browse your devices, or open your Home Assistant settings.
+choose what appears and when it can be used. Guests see only approved devices
+and controls. The HA owner edits the layout and can optionally allow guests to
+customize its appearance.
 
 ## What it does
 
@@ -67,7 +68,8 @@ repository:
    To add more types, turn on **Add another entity type before continuing**.
    Your selected entities stay selected and can be removed or reordered.
 7. Choose an expiration date or an allowed weekly schedule if needed.
-8. Copy the dashboard link on the final screen, then save.
+8. Choose the initial theme, columns, spacing, accent and optional tabs by device type.
+9. Copy the dashboard link on the final screen, then save.
 
 To create another dashboard, add the integration again. To change an existing
 one, select **Configure** on its integration card.
@@ -104,13 +106,12 @@ configured remote address (including Home Assistant Cloud) when available.
 If it shows a local address, it only works on your home network; configure remote
 access before sharing it with someone away from home.
 
-Local address:
+Guest sign-in requires HTTPS because session and sign-in cookies are secure.
+Use your Home Assistant Cloud address or an HTTPS reverse proxy, including when
+you are on the home network. An HTTP-only address may display the login form
+but cannot complete sign-in.
 
-```text
-http://homeassistant.local:8123/limited-access-dashboard/your-web-address-name
-```
-
-For remote access, add the same path to your Home Assistant Cloud address:
+For Home Assistant Cloud, use:
 
 ```text
 https://your-address.ui.nabu.casa/limited-access-dashboard/your-web-address-name
@@ -139,12 +140,32 @@ rules inside Home Assistant itself.
 
 See [SECURITY.md](SECURITY.md) before exposing a dashboard outside your home.
 
+## Customize appearance
+
+Sign in with the Home Assistant **owner** account and open **Guest dashboard
+editor** in the sidebar, or choose **Edit appearance** in the integration's
+**Configure** dialog. The appearance editor works with guest customization off.
+Arrange approved entities into tabs and sections; change colors, density,
+columns, card names, order and width; and optionally allow guests to customize
+their appearance. Guest customization is off by default and never changes entity
+permissions, credentials, schedules or the owner's approved custom-card code.
+
+### Experimental Lovelace / HACS cards
+
+The editor can load local Lovelace/HACS JavaScript modules on the guest page
+using a restricted `hass` adapter. Card failures appear on the page so individual
+cards can be tried and compatibility improved. See the
+[editor and testing guide](docs/LOCAL-EDITOR-BUILD.md) for examples and the
+current compatibility boundaries. Custom cards are experimental; compatibility
+with every Lovelace or HACS card is not guaranteed. Only install trusted card
+modules: they execute on the guest page's origin and are not sandboxed.
+
+The native integration is tested against Home Assistant 2026.9.4. All required
+editor assets ship inside the integration; no separate editor server is needed.
+
 ## What is planned
 
-- More card layouts and entity types.
-- Carefully sandboxed support for selected Lovelace and HACS cards. Arbitrary
-  custom cards are not loaded today because they normally expect a full Home
-  Assistant login and API access.
+- More entity types and broader Lovelace/HACS compatibility.
 - Reusable access profiles.
 - Single-use invitation links.
 - Optional Airbnb/Vrbo calendar dates.

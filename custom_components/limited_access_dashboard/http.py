@@ -97,7 +97,8 @@ class DashboardRuntime:
             headers={
                 "Cache-Control": "no-store",
                 "Content-Security-Policy": (
-                    "default-src 'none'; style-src 'self'; script-src 'self'; img-src 'self'; "
+                    "default-src 'none'; style-src 'self' 'unsafe-inline'; "
+                    "script-src 'self'; img-src 'self' data:; "
                     "connect-src 'self'; form-action 'self'; frame-ancestors 'none'; "
                     "base-uri 'none'"
                 ),
@@ -187,6 +188,38 @@ class DashboardRuntime:
     def cards(self) -> list[dict[str, Any]]:
         return [self.card_data(card) for card in self.settings.cards]
 
+    def restricted_states(self) -> dict[str, Any]:
+        attributes = {
+            "friendly_name",
+            "unit_of_measurement",
+            "device_class",
+            "state_class",
+            "supported_features",
+            "brightness",
+            "rgb_color",
+            "color_mode",
+            "supported_color_modes",
+            "volume_level",
+            "is_volume_muted",
+            "media_title",
+            "media_artist",
+            "temperature",
+            "current_temperature",
+        }
+        return {
+            card.entity_id: {
+                "entity_id": card.entity_id,
+                "state": state.state,
+                "attributes": {
+                    key: value for key, value in state.attributes.items() if key in attributes
+                },
+                "last_changed": state.last_changed.isoformat(),
+                "last_updated": state.last_updated.isoformat(),
+            }
+            for card in self.settings.cards
+            if (state := self.hass.states.get(card.entity_id)) is not None
+        }
+
     def get_card(self, entity_id: str) -> DashboardCard | None:
         return next((card for card in self.settings.cards if card.entity_id == entity_id), None)
 
@@ -264,6 +297,9 @@ class DashboardManager:
 
     def only(self) -> DashboardRuntime | None:
         return next(iter(self._by_slug.values())) if len(self._by_slug) == 1 else None
+
+    def runtimes(self) -> tuple[DashboardRuntime, ...]:
+        return tuple(self._by_entry.values())
 
 
 class ManagedView(HomeAssistantView):
@@ -558,6 +594,7 @@ class StateView(ManagedView):
                 "available": available,
                 "reason": reason,
                 "cards": runtime.cards() if available else [],
+                "states": runtime.restricted_states() if available else {},
             },
             headers={"Cache-Control": "no-store"},
         )
@@ -600,7 +637,7 @@ class StaticView(ManagedView):
             text=content,
             content_type=self.content_type,
             charset="utf-8",
-            headers={"Cache-Control": "public, max-age=3600", "X-Content-Type-Options": "nosniff"},
+            headers={"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"},
         )
 
 

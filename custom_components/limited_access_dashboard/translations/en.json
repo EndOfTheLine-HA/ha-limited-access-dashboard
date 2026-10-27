@@ -7,7 +7,8 @@
         "description": "Choose the dashboard name and the short name used in its web address.",
         "data": {
           "title": "Dashboard name",
-          "slug": "Web address name"
+          "slug": "Web address name",
+          "allow_guest_customization": "Allow guests to customize appearance"
         },
         "data_description": {
           "slug": "Use a short name such as landscaper, child, or rental-guest."
@@ -57,7 +58,7 @@
       },
       "share": {
         "title": "Your dashboard link",
-        "description": "Save to finish, then open [your dashboard]({dashboard_url}).\n\n**Share this address:** {dashboard_url}\n\n**Guest username:** {username}\n\nGive the guest this link and the separate dashboard password you chose. They do not need a Home Assistant account. For access away from home, use your Home Assistant Cloud or other HTTPS remote address. Local addresses work only on your home network.\n\nYou can find this link again in the dashboard device details (Visit), or by opening Configure on this integration entry."
+        "description": "Save to finish, then open [your dashboard]({dashboard_url}).\n\n**Share this address:** {dashboard_url}\n\n**Guest username:** {username}\n\nGive the guest this link and the separate dashboard password you chose. They do not need a Home Assistant account. For access away from home, use your Home Assistant Cloud or other HTTPS remote address. Local addresses work only on your home network.\n\nYou can find this link again in the dashboard device details (Visit), or by opening Configure on this integration entry.\n\n**Owner appearance editor:** [Edit tabs, sections, cards and colors]({editor_url}). Save this setup first, then open the editor using your HA owner account. Guest customization can stay off."
       },
       "schedule_window": {
         "data": {
@@ -67,6 +68,20 @@
         },
         "description": "Access is limited to these weekdays and times.",
         "title": "Choose allowed days and hours"
+      },
+      "appearance": {
+        "title": "Choose dashboard appearance",
+        "description": "Choose a starting layout and colors. These owner settings work even when guest customization is off. After saving, the final screen links to the full appearance editor for tabs, sections and individual cards.",
+        "data": {
+          "theme": "Theme",
+          "columns": "Desktop columns",
+          "density": "Card spacing",
+          "grouping": "Organize cards",
+          "accent": "Accent color (hex)"
+        },
+        "data_description": {
+          "accent": "Enter a six-digit color such as #03a9f4."
+        }
       }
     },
     "error": {
@@ -78,21 +93,24 @@
       "slug_in_use": "Another dashboard already uses this web address name.",
       "unsupported_entity": "This entity type is not supported.",
       "unsupported_irrigation": "Choose individual Rachio zone switches, not controller, rain-delay, hose timer, or schedule switches.",
-      "password_too_long": "Use a password with at most 256 characters."
+      "password_too_long": "Use a password with at most 256 characters.",
+      "invalid_appearance": "Choose a valid layout and a six-digit hex accent color, such as #03a9f4."
     },
     "abort": {
       "already_configured": "A dashboard with this web address already exists.",
-      "invalid_import": "The existing YAML configuration could not be imported."
+      "invalid_import": "The existing YAML configuration could not be imported.",
+      "owner_required": "Only the Home Assistant owner can configure this dashboard."
     }
   },
   "options": {
     "step": {
       "init": {
         "title": "Dashboard details",
-        "description": "[Open this dashboard]({dashboard_url}) — share this link and the guest credentials. Change its name or address below.",
+        "description": "[Edit appearance]({editor_url}) \u2014 change tabs, sections, cards and colors as the HA owner, even when guest customization is off.\n\n[Open guest dashboard]({dashboard_url}) \u2014 this is the link to share with guests. Change its name or address below.",
         "data": {
           "title": "Dashboard name",
-          "slug": "Web address name"
+          "slug": "Web address name",
+          "allow_guest_customization": "Allow guests to customize appearance"
         }
       },
       "account": {
@@ -139,7 +157,7 @@
       },
       "share": {
         "title": "Your dashboard link",
-        "description": "Save to finish, then open [your dashboard]({dashboard_url}).\n\n**Share this address:** {dashboard_url}\n\n**Guest username:** {username}\n\nGive the guest this link and the separate dashboard password you chose. They do not need a Home Assistant account. For access away from home, use your Home Assistant Cloud or other HTTPS remote address. Local addresses work only on your home network.\n\nYou can find this link again in the dashboard device details (Visit), or by opening Configure on this integration entry."
+        "description": "Save to finish, then open [your dashboard]({dashboard_url}).\n\n**Share this address:** {dashboard_url}\n\n**Guest username:** {username}\n\nGive the guest this link and the separate dashboard password you chose. They do not need a Home Assistant account. For access away from home, use your Home Assistant Cloud or other HTTPS remote address. Local addresses work only on your home network.\n\nYou can find this link again in the dashboard device details (Visit), or by opening Configure on this integration entry.\n\n**Owner appearance editor:** [Edit tabs, sections, cards and colors]({editor_url}). Save this setup first, then open the editor using your HA owner account. Guest customization can stay off."
       },
       "schedule_window": {
         "data": {
@@ -160,7 +178,11 @@
       "slug_in_use": "Another dashboard already uses this web address name.",
       "unsupported_entity": "This entity type is not supported.",
       "unsupported_irrigation": "Choose individual Rachio zone switches, not controller, rain-delay, hose timer, or schedule switches.",
-      "password_too_long": "Use a password with at most 256 characters."
+      "password_too_long": "Use a password with at most 256 characters.",
+      "invalid_appearance": "Choose a valid layout and a six-digit hex accent color, such as #03a9f4."
+    },
+    "abort": {
+      "owner_required": "Only the Home Assistant owner can configure this dashboard."
     }
   }
 }

@@ -138,6 +138,8 @@ class Settings:
     schedule: WeeklySchedule | None
     account: Account
     cards: tuple[DashboardCard, ...]
+    allow_guest_customization: bool = False
+    initial_design: dict[str, Any] | None = None
 
     @property
     def base_path(self) -> str:
@@ -264,6 +266,8 @@ def load_settings(raw: dict[str, Any], *, default_timezone: str = "UTC") -> Sett
             expires_at=_aware_datetime(expires_at, "expires_at"),
         ),
         cards=cards,
+        allow_guest_customization=bool(raw.get("allow_guest_customization", False)),
+        initial_design=raw.get("initial_design"),
     )
 
 

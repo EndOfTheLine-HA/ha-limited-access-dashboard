@@ -11,6 +11,7 @@ from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.typing import ConfigType
 
 from .config import DEFAULT_DATA_DIR, DOMAIN, DashboardConfigError, load_settings
+from .editor import register_editor
 from .entities import is_sprinkler
 from .http import DashboardManager, DashboardRuntime, register_views
 from .links import dashboard_url
@@ -25,6 +26,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     manager = DashboardManager()
     hass.data[DOMAIN] = manager
     register_views(hass, manager)
+    register_editor(hass, manager)
 
     raw: Any = config.get(DOMAIN)
     if isinstance(raw, dict):

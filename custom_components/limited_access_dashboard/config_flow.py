@@ -9,6 +9,7 @@ from homeassistant import config_entries
 from homeassistant.config_entries import ConfigFlowResult
 from homeassistant.core import callback
 from homeassistant.helpers import selector
+from homeassistant.helpers.http import current_request
 
 from .config import (
     DAYS,
@@ -19,8 +20,9 @@ from .config import (
     legacy_to_entry,
     normalize_slug,
 )
+from .design import setup_design
 from .entities import is_sprinkler, is_unsupported_irrigation
-from .links import dashboard_url
+from .links import dashboard_url, editor_url
 from .security import (
     MAX_PASSWORD_LENGTH,
     MAX_USERNAME_LENGTH,
@@ -47,6 +49,12 @@ CONF_END_TIME = "end_time"
 CONF_SCHEDULE = "schedule"
 
 
+def _request_is_owner() -> bool:
+    request = current_request.get()
+    # Imports and internal HA jobs have no HTTP user. UI flows do.
+    return request is None or bool((user := request.get("hass_user")) is not None and user.is_owner)
+
+
 def _suggested(key: str, current: dict[str, Any], fallback: Any) -> vol.Marker:
     return vol.Required(key, description={"suggested_value": current.get(key, fallback)})
 
@@ -58,6 +66,9 @@ def _dashboard_schema(current: dict[str, Any]) -> vol.Schema:
             _suggested(CONF_SLUG, current, "guest"): selector.TextSelector(
                 selector.TextSelectorConfig(autocomplete="off")
             ),
+            vol.Required(
+                "allow_guest_customization", default=current.get("allow_guest_customization", False)
+            ): selector.BooleanSelector(),
         }
     )
 
@@ -244,6 +255,53 @@ def _build_schedule(user_input: dict[str, Any]) -> str | dict[str, list[str]]:
 
 
 class SprinklerStep:
+    async def _after_schedule(self):
+        if isinstance(self, config_entries.OptionsFlow):
+            return await self.async_step_share()
+        return await self.async_step_appearance()
+
+    async def async_step_appearance(self, user_input=None):
+        errors = {}
+        if not _request_is_owner():
+            return self.async_abort(reason="owner_required")
+        if user_input is not None:
+            try:
+                values = {**user_input, "columns": int(user_input["columns"])}
+                self._data["initial_design"] = setup_design(self._data[CONF_ENTITIES], values)
+            except (ValueError, TypeError):
+                errors["base"] = "invalid_appearance"
+            else:
+                return await self.async_step_share()
+        values = user_input or {}
+        schema = {}
+        for key, choices, fallback in (
+            ("theme", ["dark", "light"], "dark"),
+            ("columns", ["1", "2", "3", "4"], "3"),
+            ("density", ["comfortable", "compact"], "comfortable"),
+            ("grouping", ["together", "by_type"], "by_type"),
+        ):
+            schema[vol.Required(key, default=values.get(key, fallback))] = selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=[
+                        {
+                            "value": choice,
+                            "label": {
+                                "by_type": "Separate tabs by entity type",
+                                "together": "All cards on one tab",
+                            }.get(choice, choice.title()),
+                        }
+                        for choice in choices
+                    ],
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                )
+            )
+        schema[vol.Required("accent", default=values.get("accent", "#03a9f4"))] = (
+            selector.TextSelector()
+        )
+        return self.async_show_form(
+            step_id="appearance", data_schema=vol.Schema(schema), errors=errors
+        )
+
     async def async_step_schedule(self, user_input=None):
         current = getattr(self, "_current", self._data)
         if user_input is not None:
@@ -251,7 +309,7 @@ class SprinklerStep:
                 return await self.async_step_schedule_window()
             self._data[CONF_SCHEDULE] = "always"
             self._data.setdefault("timezone", self.hass.config.time_zone)
-            return await self.async_step_share()
+            return await self._after_schedule()
         return self.async_show_form(step_id="schedule", data_schema=_schedule_schema(current))
 
     async def async_step_schedule_window(self, user_input=None):
@@ -265,7 +323,7 @@ class SprinklerStep:
                     {**user_input, CONF_ALWAYS_ACCESS: False}
                 )
                 self._data.setdefault("timezone", self.hass.config.time_zone)
-                return await self.async_step_share()
+                return await self._after_schedule()
         return self.async_show_form(
             step_id="schedule_window",
             data_schema=_schedule_window_schema(current),
@@ -339,6 +397,8 @@ class SprinklerStep:
         return self.async_show_form(step_id="sprinklers", data_schema=_sprinklers_schema(current))
 
     async def async_step_share(self, user_input=None):
+        if not _request_is_owner():
+            return self.async_abort(reason="owner_required")
         current = getattr(self, "_current", self._data)
         if user_input is not None:
             if isinstance(self, config_entries.OptionsFlow):
@@ -354,6 +414,7 @@ class SprinklerStep:
             description_placeholders={
                 "dashboard_url": dashboard_url(self.hass, current[CONF_SLUG]),
                 "username": current[CONF_USERNAME],
+                "editor_url": editor_url(current[CONF_SLUG]),
             },
         )
 
@@ -372,6 +433,8 @@ class LimitedAccessDashboardConfigFlow(SprinklerStep, config_entries.ConfigFlow,
         return LimitedAccessDashboardOptionsFlow()
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        if not _request_is_owner():
+            return self.async_abort(reason="owner_required")
         errors: dict[str, str] = {}
         if user_input is not None:
             slug = normalize_slug(user_input[CONF_SLUG])
@@ -435,6 +498,8 @@ class LimitedAccessDashboardOptionsFlow(SprinklerStep, config_entries.OptionsFlo
         return {**self.config_entry.data, **self.config_entry.options, **self._data}
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        if not _request_is_owner():
+            return self.async_abort(reason="owner_required")
         errors: dict[str, str] = {}
         if user_input is not None:
             slug = normalize_slug(user_input[CONF_SLUG])
@@ -455,7 +520,8 @@ class LimitedAccessDashboardOptionsFlow(SprinklerStep, config_entries.OptionsFlo
             data_schema=_dashboard_schema(self._current),
             errors=errors,
             description_placeholders={
-                "dashboard_url": dashboard_url(self.hass, self._current[CONF_SLUG])
+                "dashboard_url": dashboard_url(self.hass, self._current[CONF_SLUG]),
+                "editor_url": editor_url(self._current[CONF_SLUG]),
             },
         )
 
