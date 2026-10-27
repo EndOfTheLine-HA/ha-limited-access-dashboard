@@ -16,7 +16,11 @@ with sync_playwright() as playwright:
     page.goto(f"{base_url}/editor")
     page.get_by_role("heading", name="Edit guest dashboard", exact=True).wait_for()
     page.get_by_role("button", name="View recent activity", exact=True).click()
-    page.get_by_text("No recorded activity.", exact=True).wait_for()
+    page.locator("[data-audit-row]").first.wait_for()
+    assert page.locator("[data-audit-row]").count() == 2
+    assert "\n" not in page.locator("[data-audit-row]").first.text_content()
+    assert page.locator("[data-audit-row] img").count() == 0
+    page.get_by_text("guest forged", exact=True).wait_for()
     page.get_by_label("Tab title", exact=True).fill("Lights")
     page.get_by_label("Tab title", exact=True).press("Tab")
     page.get_by_label("Columns", exact=True).select_option("2")

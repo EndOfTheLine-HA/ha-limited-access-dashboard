@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import unicodedata
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -14,6 +15,14 @@ from .security import random_token, token_hash
 # row count and the size of each field are capped.
 AUDIT_LOG_MAX_ROWS = 5000
 AUDIT_FIELD_MAX_LENGTH = 200
+
+
+def audit_text(value: object) -> str:
+    """Untrusted fields must never add lines or invisible direction controls."""
+    return "".join(
+        " " if unicodedata.category(char) in {"Cc", "Cf", "Cs", "Zl", "Zp"} else char
+        for char in str(value)[:AUDIT_FIELD_MAX_LENGTH]
+    ).strip()
 
 
 @dataclass(frozen=True)
@@ -152,10 +161,7 @@ class Store:
         detail: str,
         remote_ip: str,
     ) -> None:
-        values = [
-            str(value)[:AUDIT_FIELD_MAX_LENGTH]
-            for value in (username, action_id, outcome, detail, remote_ip)
-        ]
+        values = [audit_text(value) for value in (username, action_id, outcome, detail, remote_ip)]
         with self._connect() as connection:
             cursor = connection.execute(
                 """
@@ -173,7 +179,7 @@ class Store:
     def recent_audit(self, limit: int = 100) -> list[dict]:
         with self._connect() as connection:
             return [
-                dict(row)
+                {key: audit_text(value) for key, value in dict(row).items()}
                 for row in connection.execute(
                     "SELECT occurred_at, username, action_id, outcome, detail, remote_ip "
                     "FROM audit_log ORDER BY id DESC LIMIT ?",

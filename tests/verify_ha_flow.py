@@ -440,6 +440,30 @@ async def check_security():
             "sec",
         )
         assert other.location == "/limited-access-dashboard/sec"
+        # Control characters cannot forge apparent activity rows, including old rows.
+        store.log(
+            username="guest\nforged\u2028row\u202e",
+            action_id="login",
+            outcome="denied",
+            detail="<script>\tbad",
+            remote_ip="x\rhost",
+        )
+        assert store.recent_audit()[0]["username"] == "guest forged row"
+        with closing(sqlite3.connect(settings.database_path)) as connection:
+            assert (
+                "\n"
+                not in connection.execute(
+                    "SELECT username FROM audit_log ORDER BY id DESC LIMIT 1"
+                ).fetchone()[0]
+            )
+            connection.execute(
+                "INSERT INTO audit_log "
+                "(occurred_at, username, action_id, outcome, detail, remote_ip) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                ("now", "legacy\nfake", "login", "denied", "", ""),
+            )
+            connection.commit()
+        assert store.recent_audit()[0]["username"] == "legacy fake"
         # Audit rows are truncated, and the table is capped.
         with closing(sqlite3.connect(settings.database_path)) as connection:
             longest = connection.execute("SELECT MAX(LENGTH(username)) FROM audit_log").fetchone()
@@ -462,6 +486,8 @@ async def check_security():
 async def main():
     for cls in (flow.LimitedAccessDashboardConfigFlow, flow.LimitedAccessDashboardOptionsFlow):
         item = cls()
+        if cls is flow.LimitedAccessDashboardConfigFlow:
+            assert item._data["storage_version"] == 2
         item.handler = "test"
         saved = {"schedule": {"monday": ["09:00-17:00"]}}
         item.hass = SimpleNamespace(

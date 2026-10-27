@@ -1,6 +1,6 @@
 # Dashboard editor and compatibility testing
 
-Version 0.6.1 includes the owner appearance editor, the 0.5.0 session and login
+Version 0.6.2 includes the owner appearance editor, the 0.5.0 session and login
 fixes, and the fix for light buttons changing enabled state on every refresh.
 Custom Lovelace/HACS card support remains experimental.
 
@@ -25,7 +25,7 @@ commit your changes, then run `python scripts/build_release.py`; the archive is
 written to `dist/`. The builder reads committed Git blobs (HEAD by default),
 ignores working-tree and untracked files, and uses uncompressed fixed-metadata
 ZIP entries for the same bytes across operating systems and zlib versions.
-Pass `--ref v0.6.1` to build a particular tag. Tagged releases are built and
+Pass `--ref v0.6.2` to build a particular tag. Tagged releases are built and
 published by CI only after the full CI, HACS and Hassfest jobs pass.
 Extract it into the HA configuration directory after backing up the existing
 integration and its data.
@@ -149,11 +149,27 @@ Additional host limits:
 On upgrade, data under HA's configured `limited-access-dashboard-data` directory
 moves from slug filenames to stable configuration entry IDs. URL-name edits then
 keep layouts and history. Existing external YAML database paths are copied into
-the managed directory and the original is retained. The integration never deletes
+the managed directory and the original is retained. New UI-created dashboards
+never discover old slug files. YAML imports use an explicitly supplied existing
+`database_path`, or create a fresh managed database when that file is absent.
+New imports without an explicit path also start fresh.
+
+Migrations performed by 0.6.2 compare row counts on the same SQLite snapshot,
+record the destination entry/source identity for restart recovery, and keep a
+verified `<entry_id>.db.migrated` snapshot before removing a managed legacy file.
+This backup remains until the configuration entry is removed. Incomplete copies
+are retried from the verified original. Ambiguous or unsafe files still stop
+setup with a reason shown in the HA integration UI. Backups are not retroactively
+created for migrations already completed by 0.6.1. The integration never deletes
 external databases. Old orphaned files from URL renames made before this fix are
 not automatically recovered or removed; restore needed layouts from a backup
 before editing them. Removing an entry deletes its managed layouts, sessions and
-audit history.
+audit history, including that entry's migration backup.
+
+Resources load concurrently: list order is not evaluation order. Modules must
+import their own dependencies. The page retains up to 30 distinct diagnostic
+messages instead of overwriting concurrent failures. Corrupt saved layouts show
+a warning and default cards without overwriting the stored document.
 
 This is intended to discover compatibility gaps with the actual cards you use.
 It does not claim universal compatibility with Lovelace or HACS cards.

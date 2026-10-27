@@ -36,22 +36,44 @@ async def read_json(request, maximum: int):
 
 
 async def design_document(runtime):
-    owner = await runtime.hass.async_add_executor_job(runtime.store.get_design, "owner")
-    has_owner_design = owner is not None
     entities = [card.entity_id for card in runtime.settings.cards]
-    owner = owner or {
+    fallback = {
         "design": default_design(entities),
         "resources": [],
         "allow_guest_customization": runtime.settings.allow_guest_customization,
     }
-    if runtime.settings.initial_design and not has_owner_design:
-        try:
-            owner["design"] = reconcile_design(runtime.settings.initial_design, entities)
-        except (ValueError, TypeError):
-            pass
+    try:
+        owner = await runtime.hass.async_add_executor_job(runtime.store.get_design, "owner")
+        if owner is None:
+            owner = fallback.copy()
+            if runtime.settings.initial_design:
+                owner["design"] = reconcile_design(runtime.settings.initial_design, entities)
+        else:
+            owner["design"] = reconcile_design(owner["design"], entities)
+            owner["resources"] = validate_resources(owner.get("resources", []))
+    except (ValueError, TypeError, KeyError, AttributeError, RecursionError):
+        _LOGGER.warning("Saved dashboard layout is unreadable for entry %s", runtime.entry_id)
+        owner = {
+            **fallback,
+            "design_warning": (
+                "Saved layout could not be read. Default cards are shown; "
+                "the stored layout has not been overwritten."
+            ),
+        }
     owner["allow_guest_customization"] = runtime.settings.allow_guest_customization
-    owner["design"] = reconcile_design(owner["design"], entities)
     return owner
+
+
+def service_description(data) -> str:
+    if not isinstance(data, dict):
+        return "malformed service request"
+    fields = data.get("data")
+    entity = (
+        fields.get("entity_id", "unspecified entity")
+        if isinstance(fields, dict)
+        else "unspecified entity"
+    )
+    return f"{data.get('domain', '?')}.{data.get('service', '?')} {entity}"
 
 
 def require_owner(user):
@@ -168,16 +190,23 @@ class DesignView(ManagedView):
         available = runtime.settings.access(datetime.now(UTC))[0]
         design = owner["design"]
         if owner["allow_guest_customization"]:
-            guest = await runtime.hass.async_add_executor_job(runtime.store.get_design, "guest")
-            if guest:
-                try:
+            try:
+                guest = await runtime.hass.async_add_executor_job(runtime.store.get_design, "guest")
+                if guest:
                     design = reconcile_design(
                         guest,
                         [c.entity_id for c in runtime.settings.cards],
                         approved=owner["design"],
                     )
-                except (ValueError, TypeError):
-                    pass
+            except (ValueError, TypeError, KeyError, AttributeError, RecursionError):
+                owner.setdefault(
+                    "design_warning",
+                    (
+                        "Saved guest appearance could not be read. The owner's layout is shown; "
+                        "the stored guest layout has not been overwritten."
+                    ),
+                )
+                _LOGGER.warning("Saved guest layout is unreadable for entry %s", runtime.entry_id)
         return web.json_response(
             {
                 **owner,
@@ -276,6 +305,7 @@ class CardServiceView(ManagedView):
             raise web.HTTPForbidden()
         if not runtime.limiter.allow(f"action:{principal[0].username}", limit=1, window_seconds=2):
             raise web.HTTPTooManyRequests()
+        data = None
         try:
             data = await read_json(request, 4096)
             if not isinstance(data, dict):
@@ -287,7 +317,7 @@ class CardServiceView(ManagedView):
                 username=principal[0].username,
                 action_id="custom_card",
                 outcome="denied",
-                detail="unsupported entity or action",
+                detail=f"unsupported entity or action: {service_description(data)}",
             )
             raise web.HTTPBadRequest(text=str(exc)) from exc
         except web.HTTPException:

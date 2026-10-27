@@ -31,7 +31,14 @@ async function start(){
   const get=async suffix=>{const response=await fetch(`${base}${suffix}`,{credentials:'same-origin'});if(!response.ok)throw Error(`Request failed (${response.status})`);return response.json();};
   const doc=await get('/api/design');let payload=await get('/api/state');let selected=0;let custom=[];
   const diagnostics=el('div');diagnostics.setAttribute('role','status');document.querySelector('#design-tools').append(diagnostics);
-  const report=message=>{diagnostics.textContent=String(message);diagnostics.className='notice error';};
+  const messages=[];
+  const report=message=>{
+    const text=String(message);if(messages.includes(text))return;
+    messages.push(text);if(messages.length>30)messages.shift();
+    diagnostics.replaceChildren(...messages.map(item=>el('p',item)));
+    diagnostics.className='notice error';
+  };
+  if(doc.design_warning)report(doc.design_warning);
   for (const type of ['hass-more-info','hass-action']) grid.addEventListener(type,event=>{
     event.preventDefault();report(`Card event ${type} is not supported by this guest host.`);
   });

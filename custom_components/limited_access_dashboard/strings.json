@@ -28,7 +28,7 @@
       },
       "cards": {
         "title": "Choose dashboard cards",
-        "description": "Add entities from {entity_type}. Selected entities stay on the dashboard when you change types. Remove or reorder them in Selected entities.",
+        "description": "Add entities from {entity_type}. Selected entities stay on the dashboard when you change types. Remove or reorder them in Selected entities. Choose where approved entities appear in the owner appearance editor after saving. New entities are listed as Approved entities not placed until you add their cards.",
         "data": {
           "entities": "Selected entities",
           "add_entities": "Add entities from this type",
@@ -106,7 +106,7 @@
     "step": {
       "init": {
         "title": "Dashboard details",
-        "description": "[Edit appearance]({editor_url}) \u2014 change tabs, sections, cards and colors as the HA owner, even when guest customization is off.\n\n[Open guest dashboard]({dashboard_url}) \u2014 this is the link to share with guests. Change its name or address below.",
+        "description": "[Edit appearance]({editor_url}) \u2014 change tabs, sections, cards and colors as the HA owner, even when guest customization is off.\n\n[Open guest dashboard]({dashboard_url}) \u2014 this is the link to share with guests. Change its name or address below. After adding approved entities, save Configure, then use Edit appearance to place them on a tab. Approval alone does not add a visible card.",
         "data": {
           "title": "Dashboard name",
           "slug": "Web address name",
@@ -127,7 +127,7 @@
       },
       "cards": {
         "title": "Dashboard cards",
-        "description": "Add entities from {entity_type}. Selected entities stay on the dashboard when you change types. Remove or reorder them in Selected entities.",
+        "description": "Add entities from {entity_type}. Selected entities stay on the dashboard when you change types. Remove or reorder them in Selected entities. Choose where approved entities appear in the owner appearance editor after saving. New entities are listed as Approved entities not placed until you add their cards.",
         "data": {
           "entities": "Selected entities",
           "add_entities": "Add entities from this type",

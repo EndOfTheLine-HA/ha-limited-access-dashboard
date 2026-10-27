@@ -15,7 +15,7 @@ sys.path.insert(0, sys.argv[1])
 from aiohttp import web  # noqa: E402
 from aiohttp.test_utils import TestClient, TestServer  # noqa: E402
 from homeassistant.core import State  # noqa: E402
-from homeassistant.exceptions import Unauthorized  # noqa: E402
+from homeassistant.exceptions import ConfigEntryError, Unauthorized  # noqa: E402
 
 from custom_components.limited_access_dashboard import (  # noqa: E402
     async_remove_entry,
@@ -31,6 +31,7 @@ from custom_components.limited_access_dashboard.editor import (  # noqa: E402
     CardServiceView,
     DesignView,
     call_restricted_service,
+    design_document,
     require_owner,
     websocket_audit,
     websocket_editor,
@@ -96,6 +97,55 @@ async def check_entry_migration():
             assert entry.runtime_data.settings.database_path == path
             await async_remove_entry(hass, entry)
             assert not path.exists()
+            assert not path.with_name(path.name + ".migrated").exists()
+            # New UI entries cannot inherit an orphan even when the slug matches.
+            old = Store(legacy)
+            old.save_design("owner", {"design": default_design(["light.guest"]), "resources": []})
+            fresh = SimpleNamespace(
+                entry_id="NEW",
+                unique_id="guest",
+                title="New",
+                data={**entry.data, "storage_version": 2},
+                options={},
+            )
+            fresh.data.pop("database_path")
+            assert await async_setup_entry(hass, fresh)
+            assert fresh.runtime_data.store.get_design("owner") is None
+            assert legacy.exists()
+            await async_remove_entry(hass, fresh)
+            assert legacy.exists()
+            imported = SimpleNamespace(
+                entry_id="IMPORTED",
+                unique_id="imported",
+                title="Imported",
+                data={
+                    **fresh.data,
+                    "slug": "imported",
+                    "database_path": str(config_root / "not-yet-created.db"),
+                    "storage_import": True,
+                },
+                options={},
+            )
+            assert await async_setup_entry(hass, imported)
+            assert "storage_import" not in imported.data
+            assert not (config_root / "not-yet-created.db").exists()
+            await async_remove_entry(hass, imported)
+            broken = SimpleNamespace(
+                entry_id="BROKEN",
+                unique_id="broken",
+                data={
+                    **fresh.data,
+                    "slug": "broken",
+                    "database_path": str(config_root / "missing.db"),
+                },
+                options={},
+            )
+            try:
+                await async_setup_entry(hass, broken)
+            except ConfigEntryError as exc:
+                assert "missing" in str(exc)
+            else:
+                raise AssertionError("Setup error not exposed to the HA UI")
 
 
 async def main():
@@ -223,12 +273,22 @@ async def main():
             runtime.settings = replace(runtime.settings, schedule=WeeklySchedule({}))
             assert (await (await client.get("/test/api/design")).json())["entities"] == []
             runtime.settings = replace(runtime.settings, schedule=None)
+            runtime.store.save_design("guest", {"views": "corrupt"})
+            recovered_guest = await (await client.get("/test/api/design")).json()
+            assert "design_warning" in recovered_guest
+            assert runtime.store.get_design("guest")["views"] == "corrupt"
             service = {"domain": "light", "service": "toggle", "data": {"entity_id": "light.guest"}}
             runtime.limiter = type(runtime.limiter)()
             assert (
                 await client.post("/test/api/card-service", json=service, headers=headers)
             ).status == 200
             assert "light.guest" in runtime.store.recent_audit()[0]["detail"]
+            runtime.limiter = type(runtime.limiter)()
+            denied = {**service, "data": {"entity_id": "light.private"}}
+            assert (
+                await client.post("/test/api/card-service", json=denied, headers=headers)
+            ).status == 400
+            assert "light.private" in runtime.store.recent_audit()[0]["detail"]
             runtime.limiter = type(runtime.limiter)()
             hass.services.async_call.side_effect = RuntimeError("private diagnostic")
             failed = await client.post("/test/api/card-service", json=service, headers=headers)
@@ -268,6 +328,12 @@ async def main():
                 json={"domain": "light", "service": "toggle", "data": {"entity_id": "light.guest"}},
             )
             assert response.status == 401
+        # Corrupt stored owner documents fall back visibly, without overwriting data.
+        runtime.store.save_design("owner", {"design": {"views": "corrupt"}, "resources": []})
+        recovered = await design_document(runtime)
+        assert recovered["design_warning"]
+        assert isinstance(recovered["design"]["views"], list)
+        assert runtime.store.get_design("owner")["design"]["views"] == "corrupt"
         runtime.store.save_design("owner", {"design": doc, "resources": []})
         assert runtime.store.get_design("guest") is None
         assert json.loads(json.dumps(runtime.store.get_design("owner")))["design"] == doc

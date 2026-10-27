@@ -26,14 +26,30 @@ class LimitedAccessEditorPanel extends HTMLElement {
             await this._hass.callWS({type:'limited_access_dashboard/editor',entry_id:entryId,document});
           }});
           const auditButton=el('button','View recent activity');auditButton.type='button';
-          const activity=el('pre');activity.style.cssText='white-space:pre-wrap;overflow-wrap:anywhere';
+          const activity=el('div');activity.style.cssText='overflow:auto;max-width:100%';
           auditButton.onclick=async()=>{
             try{
               const rows=await this._hass.callWS({type:'limited_access_dashboard/audit',entry_id:entryId});
-              activity.textContent=rows.length?rows.map(row=>`${row.occurred_at} ${row.username} ${row.action_id} ${row.outcome} ${row.detail} (${row.remote_ip})`).join('\n'):'No recorded activity.';
+              activity.replaceChildren();
+              if(!rows.length){activity.textContent='No recorded activity.';return;}
+              const table=el('table');table.style.cssText='width:100%;table-layout:fixed;border-collapse:collapse;overflow-wrap:anywhere';
+              const headers=el('tr');
+              for(const title of ['Time','Username','Action','Result','Details','Address'])headers.append(el('th',title));
+              const head=el('thead');head.append(headers);table.append(head);
+              const body=el('tbody');table.append(body);
+              for(const row of rows){
+                const line=el('tr');line.dataset.auditRow='';
+                for(const key of ['occurred_at','username','action_id','outcome','detail','remote_ip']){
+                  const cell=el('td',String(row[key] ?? '').replace(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu,' '));
+                  cell.style.cssText='padding:8px;border-bottom:1px solid #727782;vertical-align:top';line.append(cell);
+                }
+                body.append(line);
+              }
+              activity.append(table);
             }catch(error){activity.textContent=error.message || String(error);}
           };
           editor.replaceChildren(link,node,auditButton,activity);
+          if(doc.design_warning)editor.prepend(el('p',doc.design_warning));
         }catch(error){editor.replaceChildren(el('p',error.message || String(error)));}
       };
       const requested=new URLSearchParams(location.search).get('dashboard');

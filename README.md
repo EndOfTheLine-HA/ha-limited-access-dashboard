@@ -164,7 +164,8 @@ modules: they execute on the guest page's origin and are not sandboxed.
 The native integration is tested against Home Assistant 2026.9.4. All required
 editor assets ship inside the integration; no separate editor server is needed.
 
-After saving a layout, entities added in **Configure** appear under **Approved
+For dashboards created with the appearance setup step or a saved layout, entities
+added in **Configure** appear under **Approved
 entities not placed** in the owner editor. Place them where you want them;
 approving an entity does not automatically add a card. Removed entities and
 custom cards that explicitly reference them are removed from the displayed

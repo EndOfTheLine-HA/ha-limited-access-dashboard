@@ -8,11 +8,18 @@ from typing import Any
 import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ConfigEntryError
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.typing import ConfigType
 
 from .config import DOMAIN, DashboardConfigError, load_settings
-from .data_paths import DATA_DIRECTORY, prepare_database, remove_database
+from .data_paths import (
+    DATA_DIRECTORY,
+    mark_database,
+    prepare_database,
+    remove_database,
+    remove_migration_backup,
+)
 from .editor import register_editor
 from .entities import is_sprinkler
 from .http import DashboardManager, DashboardRuntime, register_views
@@ -60,21 +67,33 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             entry.entry_id,
             str(raw.get("slug", entry.unique_id or "dashboard")),
             raw.get("database_path"),
+            "import"
+            if raw.get("storage_import")
+            else ("new" if raw.get("storage_version", 0) >= 2 else "legacy"),
         )
         raw["database_path"] = str(database_path)
+        settings = load_settings(raw, default_timezone=hass.config.time_zone)
+        store = await hass.async_add_executor_job(Store, settings.database_path)
+        await hass.async_add_executor_job(mark_database, database_path, entry.entry_id)
         if (
             entry.data.get("database_path") != str(database_path)
             or "database_path" in entry.options
+            or entry.data.get("storage_version") != 2
+            or raw.get("storage_import")
         ):
             hass.config_entries.async_update_entry(
                 entry,
-                data={**entry.data, "database_path": str(database_path)},
+                data={
+                    **{key: value for key, value in entry.data.items() if key != "storage_import"},
+                    "database_path": str(database_path),
+                    "storage_version": 2,
+                },
                 options={
-                    key: value for key, value in entry.options.items() if key != "database_path"
+                    key: value
+                    for key, value in entry.options.items()
+                    if key not in {"database_path", "storage_version", "storage_import"}
                 },
             )
-        settings = load_settings(raw, default_timezone=hass.config.time_zone)
-        store = await hass.async_add_executor_job(Store, settings.database_path)
         runtime = await hass.async_add_executor_job(
             DashboardRuntime,
             hass,
@@ -84,7 +103,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         )
     except (OSError, sqlite3.Error, DashboardConfigError, ValueError) as exc:
         _LOGGER.error("Unable to initialize Limited Access Dashboard: %s", exc)
-        return False
+        raise ConfigEntryError(str(exc)) from exc
 
     manager: DashboardManager = hass.data[DOMAIN]
     manager.add(runtime)
@@ -119,6 +138,7 @@ async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     raw = {**entry.data, **entry.options}
     root = Path(hass.config.path(DATA_DIRECTORY))
     path = root / f"{entry.entry_id}.db"
-    if not path.exists():
+    if not path.exists() and raw.get("storage_version", 0) < 2:
         path = Path(str(raw.get("database_path", root / f"{raw.get('slug', '')}.db")))
     await hass.async_add_executor_job(remove_database, path, root)
+    await hass.async_add_executor_job(remove_migration_backup, root, entry.entry_id)

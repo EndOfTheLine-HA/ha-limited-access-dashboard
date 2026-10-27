@@ -423,7 +423,7 @@ class LimitedAccessDashboardConfigFlow(SprinklerStep, config_entries.ConfigFlow,
     VERSION = 1
 
     def __init__(self) -> None:
-        self._data: dict[str, Any] = {}
+        self._data: dict[str, Any] = {"storage_version": 2}
 
     @staticmethod
     @callback
@@ -486,6 +486,7 @@ class LimitedAccessDashboardConfigFlow(SprinklerStep, config_entries.ConfigFlow,
             return self.async_abort(reason="invalid_import")
         await self.async_set_unique_id(data[CONF_SLUG])
         self._abort_if_unique_id_configured()
+        data.update(storage_version=2, storage_import=True)
         return self.async_create_entry(title=data[CONF_TITLE], data=data)
 
 
