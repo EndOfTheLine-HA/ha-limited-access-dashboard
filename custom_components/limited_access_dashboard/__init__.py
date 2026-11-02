@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import sqlite3
+from functools import partial
 from pathlib import Path
 from typing import Any
 
@@ -72,7 +73,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             else ("new" if raw.get("storage_version", 0) >= 2 else "legacy"),
         )
         raw["database_path"] = str(database_path)
-        settings = load_settings(raw, default_timezone=hass.config.time_zone)
+        # The first lookup of a time zone reads tzdata from disk.
+        settings = await hass.async_add_executor_job(
+            partial(load_settings, raw, default_timezone=hass.config.time_zone)
+        )
         store = await hass.async_add_executor_job(Store, settings.database_path)
         await hass.async_add_executor_job(mark_database, database_path, entry.entry_id)
         if (
@@ -129,6 +133,13 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     return True
 
 
+def _database_to_remove(root: Path, entry_id: str, raw: dict[str, Any]) -> Path:
+    path = root / f"{entry_id}.db"
+    if not path.exists() and raw.get("storage_version", 0) < 2:
+        path = Path(str(raw.get("database_path", root / f"{raw.get('slug', '')}.db")))
+    return path
+
+
 async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Delete only this entry's managed dashboard database, including layouts.
 
@@ -137,8 +148,6 @@ async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """
     raw = {**entry.data, **entry.options}
     root = Path(hass.config.path(DATA_DIRECTORY))
-    path = root / f"{entry.entry_id}.db"
-    if not path.exists() and raw.get("storage_version", 0) < 2:
-        path = Path(str(raw.get("database_path", root / f"{raw.get('slug', '')}.db")))
+    path = await hass.async_add_executor_job(_database_to_remove, root, entry.entry_id, raw)
     await hass.async_add_executor_job(remove_database, path, root)
     await hass.async_add_executor_job(remove_migration_backup, root, entry.entry_id)

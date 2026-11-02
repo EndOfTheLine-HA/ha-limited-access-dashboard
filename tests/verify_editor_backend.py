@@ -21,6 +21,8 @@ from custom_components.limited_access_dashboard import (  # noqa: E402
     async_remove_entry,
     async_setup_entry,
 )
+from custom_components.limited_access_dashboard import config as config_module  # noqa: E402
+from custom_components.limited_access_dashboard import config_flow as flow_module  # noqa: E402
 from custom_components.limited_access_dashboard.config import (  # noqa: E402
     WeeklySchedule,
     load_settings,
@@ -148,8 +150,99 @@ async def check_entry_migration():
                 raise AssertionError("Setup error not exposed to the HA UI")
 
 
+def _running_loop() -> bool:
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return False
+    return True
+
+
+async def _thread_executor(func, *args):
+    return await asyncio.to_thread(func, *args)
+
+
+async def check_blocking_calls_run_in_the_executor():
+    """The time zone lookup and the database existence check must not use the event loop."""
+    on_loop = {"ZoneInfo": [], "exists": []}
+    real_zone, real_exists = config_module.ZoneInfo, Path.exists
+
+    def zone(name):
+        on_loop["ZoneInfo"].append(_running_loop())
+        return real_zone(name)
+
+    def exists(self, *args, **kwargs):
+        if self.suffix == ".db":
+            on_loop["exists"].append(_running_loop())
+        return real_exists(self, *args, **kwargs)
+
+    with TemporaryDirectory() as directory:
+        config_root = Path(directory) / "core-config"
+        entry = SimpleNamespace(
+            entry_id="ENTRY",
+            unique_id="guest",
+            title="Guest",
+            data={
+                "slug": "guest",
+                "username": "guest",
+                "password_hash": "$argon2id$test",
+                "entities": ["light.guest"],
+                "storage_version": 2,
+            },
+            options={},
+        )
+        hass = SimpleNamespace(
+            config=SimpleNamespace(
+                path=lambda *parts: str(config_root.joinpath(*parts)), time_zone="UTC"
+            ),
+            async_add_executor_job=_thread_executor,
+            data={"limited_access_dashboard": DashboardManager()},
+            config_entries=SimpleNamespace(async_update_entry=Mock()),
+            states=SimpleNamespace(get=lambda _: None),
+        )
+        with (
+            patch("custom_components.limited_access_dashboard.is_sprinkler", return_value=False),
+            patch(
+                "custom_components.limited_access_dashboard.dr.async_get",
+                return_value=SimpleNamespace(async_get_or_create=Mock()),
+            ),
+            patch(
+                "custom_components.limited_access_dashboard.dashboard_url", return_value="/guest"
+            ),
+            patch.object(config_module, "ZoneInfo", zone),
+            patch.object(Path, "exists", exists),
+        ):
+            assert await async_setup_entry(hass, entry)
+            await async_remove_entry(hass, entry)
+    assert on_loop["ZoneInfo"] == [False], on_loop
+    assert on_loop["exists"] and not any(on_loop["exists"]), on_loop
+
+    # The legacy YAML import step converts the time zone the same way.
+    on_loop["ZoneInfo"].clear()
+    item = flow_module.LimitedAccessDashboardConfigFlow()
+    item.handler = "test"
+    item.hass = SimpleNamespace(
+        config=SimpleNamespace(time_zone="UTC"), async_add_executor_job=_thread_executor
+    )
+    item.async_set_unique_id = AsyncMock()
+    item._abort_if_unique_id_configured = Mock()
+    item.async_create_entry = Mock(return_value={"type": "create_entry"})
+    legacy = {
+        "title": "Sprinklers",
+        "timezone": "UTC",
+        "account": {"username": "landscaper", "password_hash": "$argon2id$test"},
+        "zones": {"front": {"entity_id": "switch.front_lawn"}},
+    }
+    with patch.object(config_module, "ZoneInfo", zone):
+        assert (await item.async_step_import(legacy))["type"] == "create_entry"
+        invalid = {**legacy, "timezone": "Not/AZone"}
+        assert (await item.async_step_import(invalid))["reason"] == "invalid_import"
+    assert on_loop["ZoneInfo"] == [False, False], on_loop
+
+
 async def main():
     await check_entry_migration()
+    await check_blocking_calls_run_in_the_executor()
     with TemporaryDirectory() as directory:
         entities = ["light.guest", "sensor.temperature", "switch.zone"]
         settings = load_settings(

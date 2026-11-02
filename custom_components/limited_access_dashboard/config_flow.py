@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 from datetime import datetime
+from functools import partial
 from typing import Any
 
 import voluptuous as vol
@@ -481,7 +482,9 @@ class LimitedAccessDashboardConfigFlow(SprinklerStep, config_entries.ConfigFlow,
 
     async def async_step_import(self, user_input: dict[str, Any]) -> ConfigFlowResult:
         try:
-            data = legacy_to_entry(user_input, default_timezone=self.hass.config.time_zone)
+            data = await self.hass.async_add_executor_job(
+                partial(legacy_to_entry, user_input, default_timezone=self.hass.config.time_zone)
+            )
         except (TypeError, ValueError):
             return self.async_abort(reason="invalid_import")
         await self.async_set_unique_id(data[CONF_SLUG])
