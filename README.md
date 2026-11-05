@@ -46,16 +46,14 @@ sprinkler settings stay hidden for everyone else.
 
 ## Install with HACS
 
-Until this project is listed in the main HACS catalog, add it as a custom
-repository:
+Limited Access Dashboard is in the default HACS catalog.
 
-1. Open **HACS** in Home Assistant.
-2. Select **Integrations**.
-3. Open the three-dot menu and choose **Custom repositories**.
-4. Add `https://github.com/EndOfTheLine-HA/ha-limited-access-dashboard`.
-5. Choose **Integration** as the type.
-6. Find **Limited Access Dashboard** and select **Download**.
-7. Restart Home Assistant.
+1. Open HACS and search for **Limited Access Dashboard**.
+2. Select it, choose **Download**, then restart Home Assistant.
+
+If it does not appear in HACS yet (a new default listing can take several hours to
+show up), add `https://github.com/EndOfTheLine-HA/ha-limited-access-dashboard` as a
+custom repository of type **Integration** and download it from there.
 
 ## Create a limited dashboard
 
