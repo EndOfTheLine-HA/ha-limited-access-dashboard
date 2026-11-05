@@ -1,6 +1,6 @@
 # Dashboard editor and compatibility testing
 
-Version 0.6.3 includes the owner appearance editor, the 0.5.0 session and login
+Version 0.6.4 includes the owner appearance editor, the 0.5.0 session and login
 fixes, and the fix for light buttons changing enabled state on every refresh.
 Custom Lovelace/HACS card support remains experimental.
 
@@ -25,7 +25,7 @@ commit your changes, then run `python scripts/build_release.py`; the archive is
 written to `dist/`. The builder reads committed Git blobs (HEAD by default),
 ignores working-tree and untracked files, and uses uncompressed fixed-metadata
 ZIP entries for the same bytes across operating systems and zlib versions.
-Pass `--ref v0.6.3` to build a particular tag. Tagged releases are built and
+Pass `--ref v0.6.4` to build a particular tag. Tagged releases are built and
 published by CI only after the full CI, HACS and Hassfest jobs pass.
 Extract it into the HA configuration directory after backing up the existing
 integration and its data.
