@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from datetime import datetime, time
+from datetime import datetime, time, tzinfo
 from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -35,7 +35,7 @@ def normalize_slug(value: str) -> str:
     return slug[:48]
 
 
-def aware_datetime(value: Any, field_name: str, timezone: ZoneInfo) -> datetime | None:
+def aware_datetime(value: Any, field_name: str, timezone: tzinfo) -> datetime | None:
     """Parse a stored date, reading one without a UTC offset as the dashboard's local time.
 
     Home Assistant's date-and-time picker returns plain local values such as

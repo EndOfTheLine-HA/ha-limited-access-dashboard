@@ -516,19 +516,21 @@ async def check_picker_dates():
 
     # Saving: picker text is stored with the dashboard's offset; a cleared field is None.
     data = {"expires_at": "2026-11-15 18:00:00"}
-    flow._normalize_datetime_values(data, "America/Los_Angeles")
+    flow._normalize_datetime_values(data, pacific)
     assert data == {"active_from": None, "expires_at": "2026-11-15T18:00:00-08:00"}
     # Showing: the picker splits on the space, so stored dates go back as local text.
-    assert (
-        flow._picker_value("2026-10-26T03:00:00+00:00", "America/Los_Angeles")
-        == "2026-10-25 20:00:00"
-    )
-    assert flow._picker_value("2026-10-25 20:00:00", "America/Los_Angeles") == (
-        "2026-10-25 20:00:00"
-    )
-    assert flow._picker_value(None, "America/Los_Angeles") is None
-    assert flow._picker_value("not a date", "America/Los_Angeles") is None
+    assert flow._picker_value("2026-10-26T03:00:00+00:00", pacific) == "2026-10-25 20:00:00"
+    assert flow._picker_value("2026-10-25 20:00:00", pacific) == ("2026-10-25 20:00:00")
+    assert flow._picker_value(None, pacific) is None
+    assert flow._picker_value("not a date", pacific) is None
 
+    # The form steps load time zones off the event loop (HACS review of v0.6.2).
+    loop_guard = patch.object(
+        flow.dt_util,
+        "get_time_zone",
+        side_effect=AssertionError("time zone loaded on the event loop"),
+    )
+    loop_guard.start()
     # Options flow: the form shows the saved expiry at its real time, a new date
     # replaces it, and clearing the field removes it instead of keeping the old one.
     saved = {**base, "title": "Sprinklers", "display_name": "Landscaper"}
@@ -572,6 +574,7 @@ async def check_picker_dates():
     assert result["step_id"] == "entity_filter"
     assert item._data["active_from"] == "2026-11-12T06:00:00-08:00"
     assert item._data["expires_at"] is None
+    loop_guard.stop()
 
 
 async def main():

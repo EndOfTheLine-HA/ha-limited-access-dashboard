@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from datetime import tzinfo
 from functools import partial
 from typing import Any
-from zoneinfo import ZoneInfo
 
 import voluptuous as vol
 from homeassistant import config_entries
@@ -91,18 +91,21 @@ def _password_error(password: str) -> str | None:
     return None
 
 
-def _time_zone(name: str | None) -> ZoneInfo:
-    """The named time zone, or HA's own when the name is missing or unknown."""
-    return (dt_util.get_time_zone(str(name)) if name else None) or dt_util.get_default_time_zone()
+async def _async_time_zone(name: str | None) -> tzinfo:
+    """The named time zone, or HA's own when the name is missing or unknown.
+
+    Loading a zone can read tzdata from disk, so it is not done on the event loop.
+    """
+    zone = await dt_util.async_get_time_zone(str(name)) if name else None
+    return zone or dt_util.get_default_time_zone()
 
 
-def _picker_value(value: Any, timezone_name: str | None) -> str | None:
+def _picker_value(value: Any, zone: tzinfo) -> str | None:
     """A stored date as the local "YYYY-MM-DD HH:MM:SS" text HA's date picker reads.
 
     The picker splits its value on the space, so an ISO date with a "T" and an
     offset would show the right day at 12:00 AM.
     """
-    zone = _time_zone(timezone_name)
     try:
         parsed = aware_datetime(value, "date", zone)
     except DashboardConfigError:
@@ -111,7 +114,7 @@ def _picker_value(value: Any, timezone_name: str | None) -> str | None:
 
 
 def _account_schema(
-    current: dict[str, Any], *, password_required: bool, timezone_name: str | None = None
+    current: dict[str, Any], *, password_required: bool, zone: tzinfo
 ) -> vol.Schema:
     password_key: vol.Marker
     if password_required:
@@ -140,15 +143,11 @@ def _account_schema(
         ),
         vol.Optional(
             CONF_ACTIVE_FROM,
-            description={
-                "suggested_value": _picker_value(current.get(CONF_ACTIVE_FROM), timezone_name)
-            },
+            description={"suggested_value": _picker_value(current.get(CONF_ACTIVE_FROM), zone)},
         ): selector.DateTimeSelector(),
         vol.Optional(
             CONF_EXPIRES_AT,
-            description={
-                "suggested_value": _picker_value(current.get(CONF_EXPIRES_AT), timezone_name)
-            },
+            description={"suggested_value": _picker_value(current.get(CONF_EXPIRES_AT), zone)},
         ): selector.DateTimeSelector(),
     }
     return vol.Schema(schema)
@@ -267,12 +266,11 @@ def _schedule_window_schema(current: dict[str, Any]) -> vol.Schema:
     )
 
 
-def _normalize_datetime_values(data: dict[str, Any], timezone_name: str | None) -> None:
+def _normalize_datetime_values(data: dict[str, Any], zone: tzinfo) -> None:
     """Store picker dates as ISO text with the dashboard's UTC offset.
 
     A cleared field becomes None, so it also replaces a date saved earlier.
     """
-    zone = _time_zone(timezone_name)
     for key in DATETIME_KEYS:
         parsed = aware_datetime(data.get(key), key, zone)
         data[key] = parsed.isoformat() if parsed else None
@@ -287,10 +285,9 @@ def _build_schedule(user_input: dict[str, Any]) -> str | dict[str, list[str]]:
 
 
 class SprinklerStep:
-    @property
-    def _timezone_name(self) -> str:
+    async def _async_dashboard_time_zone(self) -> tzinfo:
         current = getattr(self, "_current", self._data)
-        return str(current.get("timezone") or self.hass.config.time_zone)
+        return await _async_time_zone(current.get("timezone") or self.hass.config.time_zone)
 
     async def _after_schedule(self):
         if isinstance(self, config_entries.OptionsFlow):
@@ -503,7 +500,7 @@ class LimitedAccessDashboardConfigFlow(SprinklerStep, config_entries.ConfigFlow,
             else:
                 normalized = dict(user_input)
                 normalized[CONF_USERNAME] = username
-                _normalize_datetime_values(normalized, self._timezone_name)
+                _normalize_datetime_values(normalized, await self._async_dashboard_time_zone())
                 normalized[CONF_PASSWORD_HASH] = await self.hass.async_add_executor_job(
                     hash_password, password
                 )
@@ -513,7 +510,9 @@ class LimitedAccessDashboardConfigFlow(SprinklerStep, config_entries.ConfigFlow,
         return self.async_show_form(
             step_id="account",
             data_schema=_account_schema(
-                self._data, password_required=True, timezone_name=self._timezone_name
+                self._data,
+                password_required=True,
+                zone=await self._async_dashboard_time_zone(),
             ),
             errors=errors,
         )
@@ -581,7 +580,7 @@ class LimitedAccessDashboardOptionsFlow(SprinklerStep, config_entries.OptionsFlo
                 errors[CONF_PASSWORD] = error
             else:
                 normalized[CONF_USERNAME] = username
-                _normalize_datetime_values(normalized, self._timezone_name)
+                _normalize_datetime_values(normalized, await self._async_dashboard_time_zone())
                 if password:
                     normalized[CONF_PASSWORD_HASH] = await self.hass.async_add_executor_job(
                         hash_password, password
@@ -593,7 +592,9 @@ class LimitedAccessDashboardOptionsFlow(SprinklerStep, config_entries.OptionsFlo
         return self.async_show_form(
             step_id="account",
             data_schema=_account_schema(
-                self._current, password_required=False, timezone_name=self._timezone_name
+                self._current,
+                password_required=False,
+                zone=await self._async_dashboard_time_zone(),
             ),
             errors=errors,
             description_placeholders={"password_note": "Leave blank to keep the current password."},
