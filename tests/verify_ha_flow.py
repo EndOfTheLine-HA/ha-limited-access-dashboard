@@ -13,6 +13,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
+from zoneinfo import ZoneInfo
 
 sys.path.insert(0, sys.argv[1])
 from homeassistant.components.media_player import MediaPlayerEntityFeature as Feature  # noqa: E402
@@ -23,6 +24,7 @@ from custom_components.limited_access_dashboard import config_flow as flow  # no
 from custom_components.limited_access_dashboard import remove_database  # noqa: E402
 from custom_components.limited_access_dashboard.config import (  # noqa: E402
     DashboardCard,
+    DashboardConfigError,
     load_settings,
 )
 from custom_components.limited_access_dashboard.http import (  # noqa: E402
@@ -483,6 +485,95 @@ async def check_security():
         assert not settings.database_path.exists()
 
 
+async def check_picker_dates():
+    """HA's date picker sends plain local text such as "2026-11-15 18:00:00"."""
+    pacific = ZoneInfo("America/Los_Angeles")
+    base = {
+        "slug": "landscaper",
+        "username": "landscaper",
+        "password_hash": hash_password("twelve-chars"),
+        "entities": ["switch.zone"],
+        "timezone": "America/Los_Angeles",
+    }
+    # An entry saved by the old form (no offset) loads, read as the dashboard's local time.
+    settings = load_settings({**base, "expires_at": "2026-10-25 00:00:00"})
+    assert settings.account.expires_at == datetime(2026, 10, 25, tzinfo=pacific)
+    assert settings.account.expires_at.utcoffset() == timedelta(hours=-7)
+    settings = load_settings({**base, "active_from": "2026-12-01 06:30:00"})
+    assert settings.account.active_from == datetime(2026, 12, 1, 6, 30, tzinfo=pacific)
+    assert settings.account.active_from.utcoffset() == timedelta(hours=-8)
+    # Dates that already carry an offset keep it; empty values mean no limit.
+    settings = load_settings({**base, "expires_at": "2026-10-26T03:00:00+00:00"})
+    assert settings.account.expires_at == datetime(2026, 10, 26, 3, tzinfo=UTC)
+    settings = load_settings({**base, "expires_at": None, "active_from": ""})
+    assert settings.account.expires_at is None and settings.account.active_from is None
+    try:
+        load_settings({**base, "expires_at": "next tuesday"})
+    except DashboardConfigError as exc:
+        assert "expires_at" in str(exc)
+    else:
+        raise AssertionError("an unreadable date was accepted")
+
+    # Saving: picker text is stored with the dashboard's offset; a cleared field is None.
+    data = {"expires_at": "2026-11-15 18:00:00"}
+    flow._normalize_datetime_values(data, "America/Los_Angeles")
+    assert data == {"active_from": None, "expires_at": "2026-11-15T18:00:00-08:00"}
+    # Showing: the picker splits on the space, so stored dates go back as local text.
+    assert (
+        flow._picker_value("2026-10-26T03:00:00+00:00", "America/Los_Angeles")
+        == "2026-10-25 20:00:00"
+    )
+    assert flow._picker_value("2026-10-25 20:00:00", "America/Los_Angeles") == (
+        "2026-10-25 20:00:00"
+    )
+    assert flow._picker_value(None, "America/Los_Angeles") is None
+    assert flow._picker_value("not a date", "America/Los_Angeles") is None
+
+    # Options flow: the form shows the saved expiry at its real time, a new date
+    # replaces it, and clearing the field removes it instead of keeping the old one.
+    saved = {**base, "title": "Sprinklers", "display_name": "Landscaper"}
+    options = {"expires_at": "2026-10-26T03:00:00+00:00"}
+    item = flow.LimitedAccessDashboardOptionsFlow()
+    item.handler = "test"
+    item.hass = SimpleNamespace(
+        config=SimpleNamespace(time_zone="UTC"),
+        config_entries=SimpleNamespace(
+            async_get_known_entry=lambda _: SimpleNamespace(data=saved, options=options)
+        ),
+    )
+    item.async_step_entity_filter = AsyncMock(return_value={"step_id": "entity_filter"})
+    result = await item.async_step_account()
+    values = {
+        key.schema: (key.description or {}).get("suggested_value")
+        for key in result["data_schema"].schema
+    }
+    assert values["expires_at"] == "2026-10-25 20:00:00"
+    assert values["active_from"] is None
+    account = {"username": "landscaper", "display_name": "Landscaper", "session_hours": 5}
+    result = await item.async_step_account({**account, "expires_at": "2026-11-20 14:45:00"})
+    assert result["step_id"] == "entity_filter"
+    assert item._current["expires_at"] == "2026-11-20T14:45:00-08:00"
+    assert item._current["password_hash"] == saved["password_hash"]
+    await item.async_step_account(dict(account))
+    assert item._current["expires_at"] is None
+    assert load_settings(item._current).account.expires_at is None
+
+    # Config flow: a new dashboard without a saved time zone uses HA's.
+    item = flow.LimitedAccessDashboardConfigFlow()
+    item.handler = "test"
+    item.hass = SimpleNamespace(
+        config=SimpleNamespace(time_zone="America/Los_Angeles"),
+        async_add_executor_job=AsyncMock(side_effect=lambda func, *args: func(*args)),
+    )
+    item.async_step_entity_filter = AsyncMock(return_value={"step_id": "entity_filter"})
+    result = await item.async_step_account(
+        {**account, "password": "twelve-chars", "active_from": "2026-11-12 06:00:00"}
+    )
+    assert result["step_id"] == "entity_filter"
+    assert item._data["active_from"] == "2026-11-12T06:00:00-08:00"
+    assert item._data["expires_at"] is None
+
+
 async def main():
     for cls in (flow.LimitedAccessDashboardConfigFlow, flow.LimitedAccessDashboardOptionsFlow):
         item = cls()
@@ -541,10 +632,12 @@ async def main():
             ]
             assert item._data.get("allow_guest_customization", False) is False
     await check_flows()
+    await check_picker_dates()
     await check_media()
     await check_security()
     print(
         "PASS: HA schemas, filters, retained selections, automatic zones, share links, "
+        "picker dates, "
         "password boundaries, media controls, HTTP CSRF/entity/action denials, "
         "session revocation, login limits, audit caps, database removal"
     )

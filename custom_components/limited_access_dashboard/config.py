@@ -35,12 +35,23 @@ def normalize_slug(value: str) -> str:
     return slug[:48]
 
 
-def _aware_datetime(value: Any, field_name: str) -> datetime | None:
+def aware_datetime(value: Any, field_name: str, timezone: ZoneInfo) -> datetime | None:
+    """Parse a stored date, reading one without a UTC offset as the dashboard's local time.
+
+    Home Assistant's date-and-time picker returns plain local values such as
+    "2026-11-15 18:00:00", so an offset cannot be required.
+    """
     if value in (None, ""):
         return None
-    parsed = value if isinstance(value, datetime) else datetime.fromisoformat(str(value))
+    if isinstance(value, datetime):
+        parsed = value
+    else:
+        try:
+            parsed = datetime.fromisoformat(str(value).strip())
+        except ValueError as exc:
+            raise DashboardConfigError(f"Invalid {field_name}: {value!r}") from exc
     if parsed.tzinfo is None:
-        raise DashboardConfigError(f"{field_name} must include a UTC offset")
+        parsed = parsed.replace(tzinfo=timezone)
     return parsed
 
 
@@ -262,8 +273,8 @@ def load_settings(raw: dict[str, Any], *, default_timezone: str = "UTC") -> Sett
             username=username,
             display_name=display_name,
             password_hash=password_hash,
-            active_from=_aware_datetime(active_from, "active_from"),
-            expires_at=_aware_datetime(expires_at, "expires_at"),
+            active_from=aware_datetime(active_from, "active_from", timezone),
+            expires_at=aware_datetime(expires_at, "expires_at", timezone),
         ),
         cards=cards,
         allow_guest_customization=bool(raw.get("allow_guest_customization", False)),
