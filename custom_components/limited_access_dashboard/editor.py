@@ -14,6 +14,7 @@ from homeassistant.components import frontend, websocket_api
 from homeassistant.components.http import KEY_HASS
 from homeassistant.exceptions import Unauthorized
 
+from .climate import action_data as climate_action_data
 from .config import DOMAIN, URL_ROOT
 from .design import default_design, reconcile_design, validate_design, validate_resources
 from .http import ManagedView
@@ -266,7 +267,13 @@ async def call_restricted_service(runtime, domain, service, data):
     if state is None or state.state in {"unknown", "unavailable"}:
         raise ValueError("Entity is unavailable")
     clean = {"entity_id": entity}
-    if domain == "media_player":
+    if domain == "climate":
+        if card.action != "climate":
+            raise ValueError("Thermostat is not approved for control")
+        clean = climate_action_data(
+            state, service, {key: value for key, value in data.items() if key != "entity_id"}
+        )
+    elif domain == "media_player":
         form = {}
         if service == "volume_set":
             form["volume"] = float(data.get("volume_level", -1)) * 100

@@ -161,7 +161,7 @@ ENTITY_TYPES = {
     "media_player": "Media players",
     "sensor": "Sensors",
     "binary_sensor": "Binary sensors",
-    "climate": "Climate (view only)",
+    "climate": "Climate (temperature controls)",
     "button": "Buttons",
     "input_boolean": "Toggle helpers",
     "scene": "Scenes",

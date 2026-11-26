@@ -12,6 +12,10 @@ from homeassistant.components.http import HomeAssistantView
 from homeassistant.core import HomeAssistant
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
+from .climate import action_data as climate_action_data
+from .climate import controls as climate_controls
+from .climate import form_action as climate_form_action
+from .climate import operation_controls as climate_operation_controls
 from .config import URL_ROOT, Account, DashboardCard, Settings
 from .media import action_data as media_action_data
 from .media import controls as media_controls
@@ -182,10 +186,20 @@ class DashboardRuntime:
             "card_type": card.card_type,
             "icon": "≈" if card.card_type == "sprinkler" else _DOMAIN_ICONS.get(domain, "◉"),
             "media_controls": media_controls(state) if domain == "media_player" else [],
+            "climate_controls": climate_controls(state) if domain == "climate" else None,
+            "climate_operations": climate_operation_controls(state) if domain == "climate" else None,
+            "current_temperature": state.attributes.get("current_temperature")
+            if state is not None and domain == "climate"
+            else None,
+            "temperature_unit": self.temperature_unit if domain == "climate" else "",
             "volume": round(float(state.attributes.get("volume_level", 0) or 0) * 100)
             if state is not None and domain == "media_player"
             else 0,
         }
+
+    @property
+    def temperature_unit(self) -> str:
+        return str(self.hass.config.units.temperature_unit)
 
     def cards(self) -> list[dict[str, Any]]:
         return [self.card_data(card) for card in self.settings.cards]
@@ -213,7 +227,23 @@ class DashboardRuntime:
                 "entity_id": card.entity_id,
                 "state": state.state,
                 "attributes": {
-                    key: value for key, value in state.attributes.items() if key in attributes
+                    key: value
+                    for key, value in state.attributes.items()
+                    if key in attributes
+                    or (
+                        card.entity_id.startswith("climate.")
+                        and key in {
+                            "min_temp",
+                            "max_temp",
+                            "target_temp_step",
+                            "target_temp_low",
+                            "target_temp_high",
+                            "hvac_modes",
+                            "hvac_action",
+                            "fan_mode",
+                            "fan_modes",
+                        }
+                    )
                 },
                 "last_changed": state.last_changed.isoformat(),
                 "last_updated": state.last_updated.isoformat(),
@@ -248,6 +278,12 @@ class DashboardRuntime:
     async def call_card_action(self, card: DashboardCard, form=None) -> None:
         if self.get_card(card.entity_id) != card:
             raise ValueError("Entity is not allowlisted")
+        if card.action == "climate":
+            form = form or {}
+            service, parameters = climate_form_action(form)
+            data = climate_action_data(self.hass.states.get(card.entity_id), service, parameters)
+            await self.hass.services.async_call("climate", service, data, blocking=True)
+            return
         if card.action == "media":
             form = form or {}
             action = str(form.get("media_action", ""))
@@ -597,6 +633,7 @@ class StateView(ManagedView):
                 "reason": reason,
                 "cards": runtime.cards() if available else [],
                 "states": runtime.restricted_states() if available else {},
+                "temperature_unit": runtime.temperature_unit,
             },
             headers={"Cache-Control": "no-store"},
         )
