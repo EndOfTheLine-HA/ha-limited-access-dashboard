@@ -14,6 +14,7 @@ from homeassistant.components import frontend, websocket_api
 from homeassistant.components.http import KEY_HASS
 from homeassistant.exceptions import Unauthorized
 
+from .climate import action_data as climate_action_data
 from .config import DOMAIN, URL_ROOT
 from .design import default_design, reconcile_design, validate_design, validate_resources
 from .http import ManagedView
@@ -162,7 +163,7 @@ async def websocket_editor(hass, connection, msg):
 
 class EditorStaticView(ManagedView):
     def __init__(self, manager):
-        super().__init__(manager, f"{URL_ROOT}/editor-assets/{{filename}}", "editor_assets")
+        super().__init__(manager, f"{manager.url_root}/editor-assets/{{filename}}", "editor_assets")
 
     async def get(self, request, filename):
         if filename not in {"editor-panel.js", "designer.js", "cards.js"}:
@@ -179,7 +180,7 @@ class EditorStaticView(ManagedView):
 
 class DesignView(ManagedView):
     def __init__(self, manager):
-        super().__init__(manager, f"{URL_ROOT}/{{slug}}/api/design", "design")
+        super().__init__(manager, f"{manager.url_root}/{{slug}}/api/design", "design")
 
     async def get(self, request, slug):
         runtime = self.runtime(slug)
@@ -266,7 +267,13 @@ async def call_restricted_service(runtime, domain, service, data):
     if state is None or state.state in {"unknown", "unavailable"}:
         raise ValueError("Entity is unavailable")
     clean = {"entity_id": entity}
-    if domain == "media_player":
+    if domain == "climate":
+        if card.action != "climate":
+            raise ValueError("Thermostat is not approved for control")
+        clean = climate_action_data(
+            state, service, {key: value for key, value in data.items() if key != "entity_id"}
+        )
+    elif domain == "media_player":
         form = {}
         if service == "volume_set":
             form["volume"] = float(data.get("volume_level", -1)) * 100
@@ -292,7 +299,7 @@ async def call_restricted_service(runtime, domain, service, data):
 
 class CardServiceView(ManagedView):
     def __init__(self, manager):
-        super().__init__(manager, f"{URL_ROOT}/{{slug}}/api/card-service", "card_service")
+        super().__init__(manager, f"{manager.url_root}/{{slug}}/api/card-service", "card_service")
 
     async def post(self, request, slug):
         runtime = self.runtime(slug)
@@ -343,11 +350,14 @@ class CardServiceView(ManagedView):
         return web.json_response({"success": True})
 
 
+def register_editor_views(hass, manager):
+    for view in (EditorStaticView(manager), DesignView(manager), CardServiceView(manager)):
+        hass.http.register_view(view)
+
+
 def register_editor(hass, manager):
     websocket_api.async_register_command(hass, websocket_editor)
     websocket_api.async_register_command(hass, websocket_audit)
-    for view in (EditorStaticView(manager), DesignView(manager), CardServiceView(manager)):
-        hass.http.register_view(view)
     frontend.async_register_built_in_panel(
         hass,
         "custom",

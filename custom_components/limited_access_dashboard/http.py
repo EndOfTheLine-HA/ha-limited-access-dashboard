@@ -12,6 +12,10 @@ from homeassistant.components.http import HomeAssistantView
 from homeassistant.core import HomeAssistant
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
+from .climate import action_data as climate_action_data
+from .climate import controls as climate_controls
+from .climate import form_action as climate_form_action
+from .climate import operation_controls as climate_operation_controls
 from .config import URL_ROOT, Account, DashboardCard, Settings
 from .media import action_data as media_action_data
 from .media import controls as media_controls
@@ -25,6 +29,7 @@ from .security import (
     verify_password,
 )
 from .storage import Session, Store
+from .sensor_display import sensor_presentation
 
 _LOGGER = logging.getLogger(__name__)
 SESSION_COOKIE = "lad_session"
@@ -89,6 +94,7 @@ class DashboardRuntime:
         body = self.templates[template_name].render(
             title=self.settings.title,
             base_path=self.settings.base_path,
+            url_root=self.settings.url_root,
             duration_minutes=self.settings.duration_minutes,
             **context,
         )
@@ -164,9 +170,13 @@ class DashboardRuntime:
         state_value = "Unavailable"
         unit = ""
         active = False
+        icon_path = ""
+        sensor_alert = False
         if state is not None:
             name = str(state.attributes.get("friendly_name", name))
-            state_value = str(state.state).replace("_", " ").title()
+            state_value, icon_path, sensor_alert = sensor_presentation(
+                domain, state.state, state.attributes
+            )
             unit = str(state.attributes.get("unit_of_measurement", ""))
             active = state.state in {"on", "playing", "paused"}
         if card.card_type == "sprinkler":
@@ -181,11 +191,23 @@ class DashboardRuntime:
             "action": card.action,
             "card_type": card.card_type,
             "icon": "≈" if card.card_type == "sprinkler" else _DOMAIN_ICONS.get(domain, "◉"),
+            "icon_path": icon_path,
+            "sensor_alert": sensor_alert,
             "media_controls": media_controls(state) if domain == "media_player" else [],
+            "climate_controls": climate_controls(state) if domain == "climate" else None,
+            "climate_operations": climate_operation_controls(state) if domain == "climate" else None,
+            "current_temperature": state.attributes.get("current_temperature")
+            if state is not None and domain == "climate"
+            else None,
+            "temperature_unit": self.temperature_unit if domain == "climate" else "",
             "volume": round(float(state.attributes.get("volume_level", 0) or 0) * 100)
             if state is not None and domain == "media_player"
             else 0,
         }
+
+    @property
+    def temperature_unit(self) -> str:
+        return str(self.hass.config.units.temperature_unit)
 
     def cards(self) -> list[dict[str, Any]]:
         return [self.card_data(card) for card in self.settings.cards]
@@ -213,7 +235,23 @@ class DashboardRuntime:
                 "entity_id": card.entity_id,
                 "state": state.state,
                 "attributes": {
-                    key: value for key, value in state.attributes.items() if key in attributes
+                    key: value
+                    for key, value in state.attributes.items()
+                    if key in attributes
+                    or (
+                        card.entity_id.startswith("climate.")
+                        and key in {
+                            "min_temp",
+                            "max_temp",
+                            "target_temp_step",
+                            "target_temp_low",
+                            "target_temp_high",
+                            "hvac_modes",
+                            "hvac_action",
+                            "fan_mode",
+                            "fan_modes",
+                        }
+                    )
                 },
                 "last_changed": state.last_changed.isoformat(),
                 "last_updated": state.last_updated.isoformat(),
@@ -248,6 +286,12 @@ class DashboardRuntime:
     async def call_card_action(self, card: DashboardCard, form=None) -> None:
         if self.get_card(card.entity_id) != card:
             raise ValueError("Entity is not allowlisted")
+        if card.action == "climate":
+            form = form or {}
+            service, parameters = climate_form_action(form)
+            data = climate_action_data(self.hass.states.get(card.entity_id), service, parameters)
+            await self.hass.services.async_call("climate", service, data, blocking=True)
+            return
         if card.action == "media":
             form = form or {}
             action = str(form.get("media_action", ""))
@@ -277,9 +321,12 @@ class DashboardRuntime:
 
 
 class DashboardManager:
+    url_root = URL_ROOT
+
     def __init__(self) -> None:
         self._by_slug: dict[str, DashboardRuntime] = {}
         self._by_entry: dict[str, DashboardRuntime] = {}
+        self.registered_roots: set[str] = set()
 
     def add(self, runtime: DashboardRuntime) -> None:
         current = self._by_slug.get(runtime.settings.slug)
@@ -304,13 +351,30 @@ class DashboardManager:
         return tuple(self._by_entry.values())
 
 
+class ScopedDashboardManager:
+    """Bind concrete HTTP routes to one configured root; never fall back to another."""
+
+    def __init__(self, manager: DashboardManager, url_root: str) -> None:
+        self.manager = manager
+        self.url_root = url_root
+
+    def get(self, slug: str) -> DashboardRuntime | None:
+        runtime = self.manager.get(slug)
+        return runtime if runtime and runtime.settings.url_root == self.url_root else None
+
+    def only(self) -> DashboardRuntime | None:
+        matches = [r for r in self.manager.runtimes() if r.settings.url_root == self.url_root]
+        return matches[0] if len(matches) == 1 else None
+
+
 class ManagedView(HomeAssistantView):
     requires_auth = False
 
     def __init__(self, manager: DashboardManager, url: str, name: str) -> None:
         self.manager = manager
         self.url = url
-        self.name = f"api:limited_access_dashboard:{name}"
+        suffix = "" if manager.url_root == URL_ROOT else ":p" + manager.url_root.encode().hex()
+        self.name = f"api:limited_access_dashboard:{name}{suffix}"
 
     def runtime(self, slug: str) -> DashboardRuntime:
         runtime = self.manager.get(slug)
@@ -321,7 +385,7 @@ class ManagedView(HomeAssistantView):
 
 class LandingView(ManagedView):
     def __init__(self, manager: DashboardManager) -> None:
-        super().__init__(manager, URL_ROOT, "landing")
+        super().__init__(manager, manager.url_root, "landing")
 
     async def get(self, request: web.Request) -> web.StreamResponse:
         runtime = self.manager.only()
@@ -332,7 +396,7 @@ class LandingView(ManagedView):
 
 class RootView(ManagedView):
     def __init__(self, manager: DashboardManager) -> None:
-        super().__init__(manager, f"{URL_ROOT}/{{slug}}", "root")
+        super().__init__(manager, f"{manager.url_root}/{{slug}}", "root")
 
     async def get(self, request: web.Request, slug: str) -> web.StreamResponse:
         runtime = self.runtime(slug)
@@ -356,7 +420,7 @@ class RootView(ManagedView):
 
 class LoginView(ManagedView):
     def __init__(self, manager: DashboardManager) -> None:
-        super().__init__(manager, f"{URL_ROOT}/{{slug}}/login", "login")
+        super().__init__(manager, f"{manager.url_root}/{{slug}}/login", "login")
 
     async def get(self, request: web.Request, slug: str) -> web.StreamResponse:
         runtime = self.runtime(slug)
@@ -447,7 +511,7 @@ class LoginView(ManagedView):
 
 class ConfirmView(ManagedView):
     def __init__(self, manager: DashboardManager) -> None:
-        super().__init__(manager, f"{URL_ROOT}/{{slug}}/confirm/{{entity_id}}", "confirm")
+        super().__init__(manager, f"{manager.url_root}/{{slug}}/confirm/{{entity_id}}", "confirm")
 
     async def get(self, request: web.Request, slug: str, entity_id: str) -> web.StreamResponse:
         runtime = self.runtime(slug)
@@ -470,7 +534,7 @@ class ConfirmView(ManagedView):
 
 class ActionView(ManagedView):
     def __init__(self, manager: DashboardManager) -> None:
-        super().__init__(manager, f"{URL_ROOT}/{{slug}}/actions/{{entity_id}}", "actions")
+        super().__init__(manager, f"{manager.url_root}/{{slug}}/actions/{{entity_id}}", "actions")
 
     async def post(self, request: web.Request, slug: str, entity_id: str) -> web.StreamResponse:
         runtime = self.runtime(slug)
@@ -535,7 +599,7 @@ class ActionView(ManagedView):
 
 class StopAllView(ManagedView):
     def __init__(self, manager: DashboardManager) -> None:
-        super().__init__(manager, f"{URL_ROOT}/{{slug}}/actions/stop-all", "stop_all")
+        super().__init__(manager, f"{manager.url_root}/{{slug}}/actions/stop-all", "stop_all")
 
     async def post(self, request: web.Request, slug: str) -> web.StreamResponse:
         runtime = self.runtime(slug)
@@ -584,7 +648,7 @@ class StopAllView(ManagedView):
 
 class StateView(ManagedView):
     def __init__(self, manager: DashboardManager) -> None:
-        super().__init__(manager, f"{URL_ROOT}/{{slug}}/api/state", "state")
+        super().__init__(manager, f"{manager.url_root}/{{slug}}/api/state", "state")
 
     async def get(self, request: web.Request, slug: str) -> web.StreamResponse:
         runtime = self.runtime(slug)
@@ -597,6 +661,7 @@ class StateView(ManagedView):
                 "reason": reason,
                 "cards": runtime.cards() if available else [],
                 "states": runtime.restricted_states() if available else {},
+                "temperature_unit": runtime.temperature_unit,
             },
             headers={"Cache-Control": "no-store"},
         )
@@ -604,7 +669,7 @@ class StateView(ManagedView):
 
 class LogoutView(ManagedView):
     def __init__(self, manager: DashboardManager) -> None:
-        super().__init__(manager, f"{URL_ROOT}/{{slug}}/logout", "logout")
+        super().__init__(manager, f"{manager.url_root}/{{slug}}/logout", "logout")
 
     async def post(self, request: web.Request, slug: str) -> web.StreamResponse:
         runtime = self.runtime(slug)
@@ -626,7 +691,7 @@ class StaticView(ManagedView):
     def __init__(self, manager: DashboardManager, filename: str, content_type: str) -> None:
         super().__init__(
             manager,
-            f"{URL_ROOT}/{{slug}}/static/{filename}",
+            f"{manager.url_root}/{{slug}}/static/{filename}",
             f"static_{filename.replace('.', '_')}",
         )
         self.filename = filename
@@ -645,7 +710,7 @@ class StaticView(ManagedView):
 
 class HealthView(ManagedView):
     def __init__(self, manager: DashboardManager) -> None:
-        super().__init__(manager, f"{URL_ROOT}/{{slug}}/healthz", "health")
+        super().__init__(manager, f"{manager.url_root}/{{slug}}/healthz", "health")
 
     async def get(self, request: web.Request, slug: str) -> web.StreamResponse:
         self.runtime(slug)
