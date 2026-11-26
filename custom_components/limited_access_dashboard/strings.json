@@ -8,10 +8,12 @@
         "data": {
           "title": "Dashboard name",
           "slug": "Web address name",
-          "allow_guest_customization": "Allow guests to customize appearance"
+          "allow_guest_customization": "Allow guests to customize appearance",
+          "url_prefix": "URL prefix"
         },
         "data_description": {
-          "slug": "Use a short name such as landscaper, child, or rental-guest."
+          "slug": "Use a short name such as landscaper, child, or rental-guest.",
+          "url_prefix": "First part of the dashboard address. Use one segment such as unit or guests. Default: limited-access-dashboard."
         }
       },
       "account": {
@@ -87,14 +89,15 @@
     "error": {
       "invalid_slug": "Enter a valid web address name.",
       "invalid_username": "The username must contain between 3 and 64 characters.",
-      "password_too_short": "Use a password with at least 12 characters. A longer passphrase is easier to remember and harder to guess.",
+      "password_too_short": "Enter a non-empty password.",
       "entities_required": "Select at least one entity.",
       "weekdays_required": "Select at least one weekday.",
       "slug_in_use": "Another dashboard already uses this web address name.",
       "unsupported_entity": "This entity type is not supported.",
       "unsupported_irrigation": "Choose individual Rachio zone switches, not controller, rain-delay, hose timer, or schedule switches.",
       "password_too_long": "Use a password with at most 256 characters.",
-      "invalid_appearance": "Choose a valid layout and a six-digit hex accent color, such as #03a9f4."
+      "invalid_appearance": "Choose a valid layout and a six-digit hex accent color, such as #03a9f4.",
+      "invalid_url_prefix": "Choose an unused URL prefix containing letters, numbers and hyphens; Home Assistant paths are reserved."
     },
     "abort": {
       "already_configured": "A dashboard with this web address already exists.",
@@ -110,7 +113,11 @@
         "data": {
           "title": "Dashboard name",
           "slug": "Web address name",
-          "allow_guest_customization": "Allow guests to customize appearance"
+          "allow_guest_customization": "Allow guests to customize appearance",
+          "url_prefix": "URL prefix"
+        },
+        "data_description": {
+          "url_prefix": "First part of the dashboard address. Use one segment such as unit or guests. Default: limited-access-dashboard."
         }
       },
       "account": {
@@ -172,14 +179,15 @@
     "error": {
       "invalid_slug": "Enter a valid web address name.",
       "invalid_username": "The username must contain between 3 and 64 characters.",
-      "password_too_short": "Use a password with at least 12 characters. A longer passphrase is easier to remember and harder to guess.",
+      "password_too_short": "Enter a non-empty password.",
       "entities_required": "Select at least one entity.",
       "weekdays_required": "Select at least one weekday.",
       "slug_in_use": "Another dashboard already uses this web address name.",
       "unsupported_entity": "This entity type is not supported.",
       "unsupported_irrigation": "Choose individual Rachio zone switches, not controller, rain-delay, hose timer, or schedule switches.",
       "password_too_long": "Use a password with at most 256 characters.",
-      "invalid_appearance": "Choose a valid layout and a six-digit hex accent color, such as #03a9f4."
+      "invalid_appearance": "Choose a valid layout and a six-digit hex accent color, such as #03a9f4.",
+      "invalid_url_prefix": "Choose an unused URL prefix containing letters, numbers and hyphens; Home Assistant paths are reserved."
     },
     "abort": {
       "owner_required": "Only the Home Assistant owner can configure this dashboard."

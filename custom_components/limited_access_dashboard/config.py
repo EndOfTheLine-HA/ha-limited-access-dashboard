@@ -9,11 +9,21 @@ from zoneinfo import ZoneInfo
 
 DOMAIN = "limited_access_dashboard"
 URL_ROOT = "/limited-access-dashboard"
+CONF_URL_PREFIX = "url_prefix"
+# Protect HA's own API, login, static assets and built-in panels.
+RESERVED_PREFIXES = frozenset({
+    "api", "auth", "local", "static", "frontend", "frontend_latest", "frontend_es5",
+    "hacsfiles", "hassio", "lovelace", "config", "developer-tools", "profile",
+    "history", "logbook", "map", "energy", "media-browser", "dashboard", "home",
+    "onboarding", "guest-dashboard-editor", "manifest", "service-worker", "repairs",
+    "panel_custom", "notfound", "maintenance", "webrtc", "websocket", "media",
+})
 DEFAULT_SESSION_HOURS = 8
 DEFAULT_DURATION_MINUTES = 5
 DEFAULT_DATA_DIR = "limited-access-dashboard-data"
 SUPPORTED_CONTROL_DOMAINS = (
     "button",
+    "climate",
     "input_boolean",
     "light",
     "media_player",
@@ -21,7 +31,7 @@ SUPPORTED_CONTROL_DOMAINS = (
     "script",
     "switch",
 )
-SUPPORTED_DISPLAY_DOMAINS = ("binary_sensor", "climate", "sensor")
+SUPPORTED_DISPLAY_DOMAINS = ("binary_sensor", "sensor")
 SUPPORTED_DOMAINS = SUPPORTED_CONTROL_DOMAINS + SUPPORTED_DISPLAY_DOMAINS
 DAYS = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
 
@@ -33,6 +43,18 @@ class DashboardConfigError(ValueError):
 def normalize_slug(value: str) -> str:
     slug = re.sub(r"[^a-z0-9]+", "-", value.strip().lower()).strip("-")
     return slug[:48]
+
+
+def normalize_url_prefix(value: str) -> str:
+    """Accept exactly one safe URL segment, with optional surrounding slashes."""
+    if not isinstance(value, str):
+        raise DashboardConfigError("Invalid URL prefix")
+    prefix = value.strip().strip("/").lower()
+    if not re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", prefix) or len(prefix) > 48:
+        raise DashboardConfigError("Invalid URL prefix")
+    if prefix in RESERVED_PREFIXES:
+        raise DashboardConfigError("Reserved URL prefix")
+    return prefix
 
 
 def aware_datetime(value: Any, field_name: str, timezone: tzinfo) -> datetime | None:
@@ -112,6 +134,8 @@ class DashboardCard:
         if self.card_type == "sprinkler":
             return "sprinkler"
         domain = self.entity_id.split(".", maxsplit=1)[0]
+        if domain == "climate":
+            return "climate"
         if domain == "media_player":
             return "media"
         if domain in {"light", "switch", "input_boolean"}:
@@ -151,10 +175,15 @@ class Settings:
     cards: tuple[DashboardCard, ...]
     allow_guest_customization: bool = False
     initial_design: dict[str, Any] | None = None
+    url_prefix: str = URL_ROOT.lstrip("/")
+
+    @property
+    def url_root(self) -> str:
+        return f"/{self.url_prefix}"
 
     @property
     def base_path(self) -> str:
-        return f"{URL_ROOT}/{self.slug}"
+        return f"{self.url_root}/{self.slug}"
 
     @property
     def sprinklers(self) -> tuple[DashboardCard, ...]:
@@ -220,7 +249,7 @@ def load_settings(raw: dict[str, Any], *, default_timezone: str = "UTC") -> Sett
         display_name = str(raw.get("display_name", username))
         timezone_name = str(raw.get("timezone", default_timezone))
 
-    if not slug:
+    if not slug or slug == "editor-assets":
         raise DashboardConfigError("dashboard URL name is required")
     if not username:
         raise DashboardConfigError("username is required")
@@ -263,6 +292,7 @@ def load_settings(raw: dict[str, Any], *, default_timezone: str = "UTC") -> Sett
     return Settings(
         title=str(raw.get("title", "Limited Access Dashboard")),
         slug=slug,
+        url_prefix=normalize_url_prefix(raw.get(CONF_URL_PREFIX, URL_ROOT)),
         timezone=timezone,
         session_hours=session_hours,
         cookie_secure=bool(raw.get("cookie_secure", True)),
@@ -288,6 +318,7 @@ def legacy_to_entry(raw: dict[str, Any], *, default_timezone: str) -> dict[str, 
     result: dict[str, Any] = {
         "title": settings.title,
         "slug": settings.slug,
+        CONF_URL_PREFIX: settings.url_prefix,
         "timezone": str(settings.timezone),
         "username": settings.account.username,
         "display_name": settings.account.display_name,

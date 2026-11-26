@@ -14,6 +14,8 @@ from homeassistant.helpers.http import current_request
 from homeassistant.util import dt as dt_util
 
 from .config import (
+    CONF_URL_PREFIX,
+    URL_ROOT,
     DAYS,
     DEFAULT_DURATION_MINUTES,
     DEFAULT_SESSION_HOURS,
@@ -27,6 +29,7 @@ from .config import (
 from .design import setup_design
 from .entities import is_sprinkler, is_unsupported_irrigation
 from .links import dashboard_url, editor_url
+from .routing import validate_url_root
 from .security import (
     MAX_PASSWORD_LENGTH,
     MAX_USERNAME_LENGTH,
@@ -68,6 +71,9 @@ def _dashboard_schema(current: dict[str, Any]) -> vol.Schema:
     return vol.Schema(
         {
             _suggested(CONF_TITLE, current, "Limited Access Dashboard"): selector.TextSelector(),
+            vol.Required(
+                CONF_URL_PREFIX, default=current.get(CONF_URL_PREFIX, URL_ROOT.lstrip("/"))
+            ): selector.TextSelector(),
             _suggested(CONF_SLUG, current, "guest"): selector.TextSelector(
                 selector.TextSelectorConfig(autocomplete="off")
             ),
@@ -161,7 +167,7 @@ ENTITY_TYPES = {
     "media_player": "Media players",
     "sensor": "Sensors",
     "binary_sensor": "Binary sensors",
-    "climate": "Climate (view only)",
+    "climate": "Climate (temperature controls)",
     "button": "Buttons",
     "input_boolean": "Toggle helpers",
     "scene": "Scenes",
@@ -446,7 +452,9 @@ class SprinklerStep:
             step_id="share",
             data_schema=vol.Schema({}),
             description_placeholders={
-                "dashboard_url": dashboard_url(self.hass, current[CONF_SLUG]),
+                "dashboard_url": dashboard_url(
+                    self.hass, current[CONF_SLUG], current.get(CONF_URL_PREFIX, URL_ROOT)
+                ),
                 "username": current[CONF_USERNAME],
                 "editor_url": editor_url(current[CONF_SLUG]),
             },
@@ -472,13 +480,18 @@ class LimitedAccessDashboardConfigFlow(SprinklerStep, config_entries.ConfigFlow,
         errors: dict[str, str] = {}
         if user_input is not None:
             slug = normalize_slug(user_input[CONF_SLUG])
-            if not slug:
+            try:
+                prefix = validate_url_root(self.hass, user_input.get(CONF_URL_PREFIX, URL_ROOT))
+            except DashboardConfigError:
+                errors[CONF_URL_PREFIX] = "invalid_url_prefix"
+            if not slug or slug == "editor-assets":
                 errors[CONF_SLUG] = "invalid_slug"
-            else:
+            if not errors:
                 await self.async_set_unique_id(slug)
                 self._abort_if_unique_id_configured()
                 self._data.update(user_input)
                 self._data[CONF_SLUG] = slug
+                self._data[CONF_URL_PREFIX] = prefix
                 return await self.async_step_account()
         return self.async_show_form(
             step_id="user",
@@ -548,20 +561,27 @@ class LimitedAccessDashboardOptionsFlow(SprinklerStep, config_entries.OptionsFlo
                 entry.entry_id != self.config_entry.entry_id and entry.unique_id == slug
                 for entry in self.hass.config_entries.async_entries(DOMAIN)
             )
-            if not slug:
+            try:
+                prefix = validate_url_root(self.hass, user_input.get(CONF_URL_PREFIX, URL_ROOT))
+            except DashboardConfigError:
+                errors[CONF_URL_PREFIX] = "invalid_url_prefix"
+            if not slug or slug == "editor-assets":
                 errors[CONF_SLUG] = "invalid_slug"
             elif duplicate:
                 errors[CONF_SLUG] = "slug_in_use"
-            else:
+            if not errors:
                 self._data.update(user_input)
                 self._data[CONF_SLUG] = slug
+                self._data[CONF_URL_PREFIX] = prefix
                 return await self.async_step_account()
         return self.async_show_form(
             step_id="init",
             data_schema=_dashboard_schema(self._current),
             errors=errors,
             description_placeholders={
-                "dashboard_url": dashboard_url(self.hass, self._current[CONF_SLUG]),
+                "dashboard_url": dashboard_url(
+                    self.hass, self._current[CONF_SLUG], self._current.get(CONF_URL_PREFIX, URL_ROOT)
+                ),
                 "editor_url": editor_url(self._current[CONF_SLUG]),
             },
         )

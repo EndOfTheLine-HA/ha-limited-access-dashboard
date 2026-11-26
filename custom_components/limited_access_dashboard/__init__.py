@@ -13,7 +13,7 @@ from homeassistant.exceptions import ConfigEntryError
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.typing import ConfigType
 
-from .config import DOMAIN, DashboardConfigError, load_settings
+from .config import DOMAIN, URL_ROOT, DashboardConfigError, load_settings
 from .data_paths import (
     DATA_DIRECTORY,
     mark_database,
@@ -23,7 +23,8 @@ from .data_paths import (
 )
 from .editor import register_editor
 from .entities import is_sprinkler
-from .http import DashboardManager, DashboardRuntime, register_views
+from .http import DashboardManager, DashboardRuntime
+from .routing import register_url_root
 from .links import dashboard_url
 from .storage import Store
 
@@ -35,7 +36,7 @@ CONFIG_SCHEMA = vol.Schema({vol.Optional(DOMAIN): dict}, extra=vol.ALLOW_EXTRA)
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     manager = DashboardManager()
     hass.data[DOMAIN] = manager
-    register_views(hass, manager)
+    register_url_root(hass, manager, URL_ROOT)
     register_editor(hass, manager)
 
     raw: Any = config.get(DOMAIN)
@@ -110,7 +111,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         raise ConfigEntryError(str(exc)) from exc
 
     manager: DashboardManager = hass.data[DOMAIN]
-    manager.add(runtime)
+    try:
+        register_url_root(hass, manager, settings.url_prefix)
+        manager.add(runtime)
+    except (DashboardConfigError, ValueError, RuntimeError) as exc:
+        raise ConfigEntryError(str(exc)) from exc
     entry.runtime_data = runtime
     dr.async_get(hass).async_get_or_create(
         config_entry_id=entry.entry_id,
@@ -120,7 +125,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         model="Guest dashboard",
         entry_type=dr.DeviceEntryType.SERVICE,
         configuration_url=(
-            url if (url := dashboard_url(hass, settings.slug)).startswith("http") else None
+            url
+            if (url := dashboard_url(hass, settings.slug, settings.url_prefix)).startswith("http")
+            else None
         ),
     )
     _LOGGER.info("Limited Access Dashboard registered at %s", settings.base_path)
