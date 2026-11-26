@@ -87,3 +87,10 @@ input:focus { outline: 2px solid var(--ha-blue); outline-offset: 2px; }
   .lovelace-grid { grid-template-columns: 1fr; }
   .ha-card { min-height: 96px; }
 }
+
+.climate-controls { display: flex; flex-wrap: wrap; align-items: end; gap: 8px; }
+.climate-controls input[type="number"] { max-width: 120px; padding: 8px; }
+
+.climate-operation-controls { display:flex; flex-wrap:wrap; gap:8px; align-items:end; }
+.climate-operation-controls form[hidden] { display:none; }
+.climate-controls select { max-width:100%; padding:8px; border:1px solid var(--ha-line); border-radius:10px; background:var(--ha-card); color:inherit; font:inherit; }

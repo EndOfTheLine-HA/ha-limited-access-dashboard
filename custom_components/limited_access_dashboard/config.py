@@ -14,6 +14,7 @@ DEFAULT_DURATION_MINUTES = 5
 DEFAULT_DATA_DIR = "limited-access-dashboard-data"
 SUPPORTED_CONTROL_DOMAINS = (
     "button",
+    "climate",
     "input_boolean",
     "light",
     "media_player",
@@ -21,7 +22,7 @@ SUPPORTED_CONTROL_DOMAINS = (
     "script",
     "switch",
 )
-SUPPORTED_DISPLAY_DOMAINS = ("binary_sensor", "climate", "sensor")
+SUPPORTED_DISPLAY_DOMAINS = ("binary_sensor", "sensor")
 SUPPORTED_DOMAINS = SUPPORTED_CONTROL_DOMAINS + SUPPORTED_DISPLAY_DOMAINS
 DAYS = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
 
@@ -112,6 +113,8 @@ class DashboardCard:
         if self.card_type == "sprinkler":
             return "sprinkler"
         domain = self.entity_id.split(".", maxsplit=1)[0]
+        if domain == "climate":
+            return "climate"
         if domain == "media_player":
             return "media"
         if domain in {"light", "switch", "input_boolean"}:

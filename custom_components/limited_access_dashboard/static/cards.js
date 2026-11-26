@@ -6,7 +6,7 @@ export function restrictedHass(payload, sendService, report) {
     states: payload.states || {}, entities: {}, devices: {}, areas: {}, floors: {},
     language: 'en', selectedLanguage: 'en', locale: {language:'en',number_format:'language',time_format:'24',first_weekday:'monday'},
     themes: {darkMode: document.documentElement.dataset.theme !== 'light', themes:{}, default_theme:'default'},
-    config: {unit_system:{temperature:'°C',length:'km',mass:'kg',volume:'L'},time_zone:Intl.DateTimeFormat().resolvedOptions().timeZone},
+    config: {unit_system:{temperature:payload.temperature_unit || '°C',length:'km',mass:'kg',volume:'L'},time_zone:Intl.DateTimeFormat().resolvedOptions().timeZone},
     user: {name:'Guest',is_admin:false,is_owner:false}, panels:{}, services:{},
     localize: key => key.split('.').pop().replaceAll('_',' '),
     formatEntityState: state => `${state.state}${state.attributes.unit_of_measurement ? ` ${state.attributes.unit_of_measurement}` : ''}`,
@@ -82,7 +82,7 @@ async function start(){
       const node=el('div',undefined,'card-stack');if(config.title)node.append(el('h2',config.title));
       for(const item of config.entities || []){const row=typeof item==='string'?{entity:item}:item;node.append(entityCard(row.entity,row.name,'compact'));}return node;
     }
-    if(['tile','button','entity','sensor','media-control'].includes(config.type))return entityCard(config.entity,config.name);
+    if(['tile','button','entity','sensor','media-control','thermostat'].includes(config.type))return entityCard(config.entity,config.name);
     if(config.type==='heading')return el('h2',config.heading || config.title || '');
     if(config.type==='markdown'){const node=el('div',undefined,'ha-card');node.textContent=config.content || '';return node;}
     throw Error(`Built-in card type ${config.type} is not implemented in the guest host yet. Try a custom: card resource or an entity card.`);
@@ -129,9 +129,50 @@ async function start(){
     for(const state of payload.cards){for(const node of grid.querySelectorAll(`[data-entity-id="${CSS.escape(state.entity_id)}"]`)){
       node.classList.toggle('active',state.active);node.classList.toggle('unavailable',!state.available);
       const label=node.querySelector('.state-value');if(label)label.textContent=`${state.state}${state.unit?` ${state.unit}`:''}`;
-      for(const control of node.querySelectorAll('button,.tile-action,input[type=number]')){
+      const climate = state.climate_controls;
+      const current = node.querySelector('.climate-current');
+      if (current) current.textContent = `Current: ${state.current_temperature == null ? 'Unavailable' : `${state.current_temperature} ${state.temperature_unit}`}`;
+      const target = node.querySelector('.climate-target');
+      if (target) target.textContent = climate ? `Target: ${climate.fields.map(field => climate.values[field] ?? '—').join(' / ')} ${state.temperature_unit}` : '';
+      const climateForm = node.querySelector('[data-climate-fields]');
+      const climateMismatch = climateForm && (!climate || climateForm.dataset.climateFields !== climate.fields.join(','));
+      if (climateForm && climate && !climateMismatch) {
+        for (const input of climateForm.querySelectorAll('input[type=number]')) {
+          input.min = climate.min; input.max = climate.max;
+          if (!input.dataset.edited && document.activeElement !== input) input.value = climate.values[input.name] ?? '';
+          input.oninput = () => { input.dataset.edited = 'true'; };
+        }
+      }
+      if (climateForm) climateForm.title = climateMismatch ? 'Reload the dashboard after a thermostat mode change.' : '';
+      const operations = state.climate_operations;
+        for (const form of node.querySelectorAll('[data-climate-operation]')) {
+          const service = form.dataset.climateOperation;
+          const select = form.querySelector('select');
+          if (select) {
+            const field = select.name;
+            const choices = operations?.[field + 's'] || [];
+            const selected = select.value;
+            const current = operations?.[field];
+            const desired = select.dataset.edited && choices.includes(selected) ? selected : current;
+            if (!choices.includes(selected)) delete select.dataset.edited;
+            const values = [...select.options].filter(option => option.value !== '').map(option => option.value);
+            if (JSON.stringify(values) !== JSON.stringify(choices) || (!choices.includes(desired) && !select.querySelector('option[value=""]'))) {
+              select.replaceChildren();
+              const placeholder = new Option('Select mode', '', false, false);
+              placeholder.disabled = true;
+              select.append(placeholder);
+              for (const choice of choices) select.append(new Option(choice.replaceAll('_', ' '), choice));
+            }
+            select.value = choices.includes(desired) ? desired : '';
+            select.onchange = () => { select.dataset.edited = 'true'; };
+            form.hidden = !choices.length;
+          } else {
+            form.hidden = !operations?.[service];
+          }
+        }
+        for(const control of node.querySelectorAll('button,.tile-action,input[type=number],select')){
         const unsupported=Boolean(control.dataset.mediaAction)&&!state.media_controls.some(item=>item.action===control.dataset.mediaAction);
-        const disabled=!payload.available||!state.available||unsupported;control.toggleAttribute('disabled',disabled);control.classList.toggle('disabled',disabled);
+        const disabled=!payload.available||!state.available||unsupported||Boolean(climateMismatch && climateForm.contains(control)) || Boolean(control.closest('[data-climate-operation]')?.hidden);control.toggleAttribute('disabled',disabled);control.classList.toggle('disabled',disabled);
       }
     }}
   };

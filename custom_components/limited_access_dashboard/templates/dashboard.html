@@ -29,17 +29,56 @@
 
   <section class="lovelace-grid" aria-label="Available controls" data-state-url="{{ base_path }}/api/state" data-base-path="{{ base_path }}">
     {% for card in cards %}
-      <article class="ha-card{% if card.action == 'media' %} media-card{% endif %}{% if card.active %} active{% endif %}{% if not card.available %} unavailable{% endif %}" data-entity-id="{{ card.entity_id }}">
+      <article class="ha-card{% if card.action in ['media', 'climate'] %} media-card{% endif %}{% if card.active %} active{% endif %}{% if not card.available %} unavailable{% endif %}" data-entity-id="{{ card.entity_id }}">
         <div class="card-copy">
           <span class="state-icon" aria-hidden="true">{{ card.icon }}</span>
           <div class="card-text">
             <h2>{{ card.name }}</h2>
             <p class="state-value">{{ card.state }}{% if card.unit %} {{ card.unit }}{% endif %}</p>
+            {% if card.action == 'climate' %}
+              <p class="card-note climate-current">Current: {% if card.current_temperature is not none %}{{ card.current_temperature }} {{ card.temperature_unit }}{% else %}Unavailable{% endif %}</p>
+              <p class="card-note climate-target">{% if card.climate_controls %}Target: {{ card.climate_controls['values'].values() | join(' / ') }} {{ card.temperature_unit }}{% endif %}</p>
+            {% endif %}
             {% if card.card_type == 'sprinkler' %}<p class="card-note">Runs for {{ duration_minutes }} minutes</p>{% endif %}
           </div>
         </div>
         {% if card.action == 'sprinkler' %}
           <a class="tile-action{% if not available %} disabled{% endif %}" href="{{ base_path }}/confirm/{{ card.entity_id }}">Run</a>
+        {% elif card.action == 'climate' %}
+          {% set ops = card.climate_operations %}
+          <div class="climate-operation-controls">
+          {% for field, label, service in [('hvac_mode', 'HVAC mode', 'set_hvac_mode'), ('fan_mode', 'Fan mode', 'set_fan_mode')] %}
+            <form class="climate-controls" data-climate-operation="{{ service }}" method="post" action="{{ base_path }}/actions/{{ card.entity_id }}"{% if not ops[field ~ 's'] %} hidden{% endif %}>
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <input type="hidden" name="climate_action" value="{{ service }}">
+              <label>{{ label }}
+                <select name="{{ field }}" required{% if not available or not card.available or not ops[field ~ 's'] %} disabled{% endif %}>
+                  {% if ops[field] not in ops[field ~ 's'] %}<option value="" selected disabled>Select mode</option>{% endif %}
+                  {% for mode in ops[field ~ 's'] %}<option value="{{ mode }}"{% if mode == ops[field] %} selected{% endif %}>{{ mode | replace('_', ' ') | title }}</option>{% endfor %}
+                </select>
+              </label>
+              <button type="submit" class="tile-action"{% if not available or not card.available or not ops[field ~ 's'] %} disabled{% endif %}>Apply</button>
+            </form>
+          {% endfor %}
+          {% for service, label in [('turn_on', 'Power on'), ('turn_off', 'Power off')] %}
+            <form data-climate-operation="{{ service }}" method="post" action="{{ base_path }}/actions/{{ card.entity_id }}"{% if not ops[service] %} hidden{% endif %}>
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <input type="hidden" name="climate_action" value="{{ service }}">
+              <button type="submit" class="tile-action"{% if not available or not card.available or not ops[service] %} disabled{% endif %}>{{ label }}</button>
+            </form>
+          {% endfor %}
+          </div>
+          {% if card.climate_controls %}
+          <form class="climate-controls" data-climate-fields="{{ card.climate_controls['fields'] | join(',') }}" method="post" action="{{ base_path }}/actions/{{ card.entity_id }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            {% for field in card.climate_controls['fields'] %}
+            <label>{{ {'temperature': 'Target', 'target_temp_low': 'Heating target', 'target_temp_high': 'Cooling target'}[field] }} ({{ card.temperature_unit }})
+              <input type="number" name="{{ field }}" min="{{ card.climate_controls.min }}" max="{{ card.climate_controls.max }}" step="any" value="{{ card.climate_controls['values'][field] if card.climate_controls['values'][field] is not none else '' }}" required{% if not available or not card.available %} disabled{% endif %}>
+            </label>
+            {% endfor %}
+            <button type="submit" class="tile-action"{% if not available or not card.available %} disabled{% endif %}>Set temperature</button>
+          </form>
+          {% else %}<p class="card-note">Temperature adjustment is unavailable.</p>{% endif %}
         {% elif card.action == 'media' %}
           <div class="media-controls">
           {% for control in card.media_controls %}
