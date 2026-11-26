@@ -18,6 +18,7 @@
       }
       for (const card of payload.cards) {
         for (const element of grid.querySelectorAll(`[data-entity-id="${CSS.escape(card.entity_id)}"]`)) {
+        if (element.dataset?.thermostatEnhanced === "true") continue;
         element.classList.toggle("active", card.active);
         element.classList.toggle("unavailable", !card.available);
         const state = element.querySelector(".state-value");

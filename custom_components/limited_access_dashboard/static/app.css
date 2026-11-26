@@ -94,3 +94,47 @@ input:focus { outline: 2px solid var(--ha-blue); outline-offset: 2px; }
 .climate-operation-controls { display:flex; flex-wrap:wrap; gap:8px; align-items:end; }
 .climate-operation-controls form[hidden] { display:none; }
 .climate-controls select { max-width:100%; padding:8px; border:1px solid var(--ha-line); border-radius:10px; background:var(--ha-card); color:inherit; font:inherit; }
+
+/* HA-inspired guest climate card; respects the dashboard's selected theme. */
+.thermostat-card { --thermo-accent:#a0a4ac; --thermo-track:#3b3e48; --thermo-controls:#2a2d37; --thermo-ink:inherit; display:flex; flex-direction:column; align-items:stretch; gap:10px; padding:14px; min-width:0; color:var(--thermo-ink); box-shadow:none; }
+[data-theme=light] .thermostat-card { --thermo-track:#ebebeb; --thermo-controls:#f1f1f1; --thermo-ink:#202124; }
+.thermostat-card[data-hvac-mode=heat] { --thermo-accent:#ff7025; }
+.thermostat-card[data-hvac-mode=cool] { --thermo-accent:#2196f3; }
+.thermostat-card[data-hvac-mode=heat_cool],.thermostat-card[data-hvac-mode=auto] { --thermo-accent:#38a77b; }
+.thermostat-card[data-hvac-mode=dry],.thermostat-card[data-hvac-mode=fan_only] { --thermo-accent:#36a7ba; }
+.thermostat-card .thermostat-title { text-align:center; font-size:1rem; margin:2px 0 0; font-weight:500; overflow-wrap:anywhere; }
+.thermostat-dial { position:relative; width:min(100%, 360px); align-self:center; aspect-ratio:300 / 254; }
+.thermostat-dial > svg { width:100%; height:auto; display:block; overflow:visible; }
+.thermostat-track,.thermostat-fill,.thermostat-hit { fill:none; stroke-width:19; stroke-linecap:round; }
+.thermostat-track { stroke:var(--thermo-track); }
+.thermostat-fill { stroke:var(--thermo-accent); opacity:.55; }
+.thermostat-handle { stroke:var(--thermo-accent); stroke-width:2.8; fill:var(--ha-card); }
+.thermostat-second { stroke-width:2; }
+.thermostat-hit { stroke:transparent; stroke-width:34; pointer-events:none; }
+.thermostat-hit.enabled { pointer-events:stroke; cursor:grab; touch-action:none; }
+.thermostat-hit.enabled:active { cursor:grabbing; }
+.thermostat-center { position:absolute; top:33%; left:10%; right:10%; display:flex; flex-direction:column; align-items:center; gap:4px; pointer-events:none; }
+.thermostat-status { font-size:clamp(.78rem, 2.8vw, 1rem); font-weight:500; }
+.thermostat-target { display:flex; align-items:flex-start; line-height:1.08; }
+.thermostat-number { font-size:clamp(2rem, 10vw, 3.5rem); font-weight:400; letter-spacing:-.04em; font-variant-numeric:tabular-nums; }
+.thermostat-unit { font-size:.88rem; margin-top:5px; margin-left:3px; }
+.thermostat-current { display:flex; align-items:center; gap:4px; margin-top:3px; font-size:.9rem; font-weight:500; }
+.thermostat-current svg { width:15px; height:15px; }
+.thermostat-adjust { position:absolute; bottom:0; left:0; right:0; display:flex; justify-content:center; gap:12px; }
+.thermostat-step { border:1px solid var(--ha-muted); color:inherit; background:transparent; border-radius:50%; width:44px; height:44px; font-size:1.7rem; line-height:1; display:grid; place-items:center; }
+.thermostat-modes,.thermostat-range { display:flex; flex-wrap:wrap; background:var(--thermo-controls); border-radius:12px; gap:2px; padding:2px; }
+.thermostat-modes button,.thermostat-range button { flex:1 1 34px; min-height:40px; display:grid; place-items:center; border-radius:10px; color:inherit; background:transparent; padding:6px; }
+.thermostat-modes button svg { width:21px; height:21px; }
+.thermostat-modes button[aria-pressed=true],.thermostat-range button[aria-pressed=true] { background:var(--thermo-accent); color:#111; }
+.thermostat-modes button[aria-pressed=true]:disabled { opacity:1; }
+.thermostat-range button { font-size:.8rem; }
+.thermostat-fan { display:flex; align-items:center; gap:8px; background:var(--thermo-controls); border-radius:12px; padding:7px 10px; color:inherit; }
+.thermostat-fan svg { flex:none; width:21px; height:21px; }
+.thermostat-fan select { flex:1; min-width:0; background:transparent; border:0; color:inherit; font:inherit; min-height:32px; }
+.thermostat-fan select option { background:var(--ha-card); color:inherit; }
+.thermostat-card button:disabled,.thermostat-card select:disabled { opacity:.45; cursor:default; }
+.thermostat-card button:focus-visible,.thermostat-card select:focus-visible { outline:2px solid var(--ha-blue); outline-offset:2px; }
+.thermostat-feedback { font-size:.75rem; text-align:center; color:var(--ha-muted); margin:0; }
+.thermostat-feedback:empty,.thermostat-card [hidden] { display:none!important; }
+@supports (font-size:1cqi) { .card-slot .thermostat-number { font-size:clamp(1.6rem, 16cqi, 3.5rem); } }
+@container (max-width:245px) { .thermostat-card { padding:10px; gap:8px; } .thermostat-center { gap:1px; top:32%; } .thermostat-current { font-size:.75rem; margin:0; } .thermostat-step { width:36px; height:36px; } .thermostat-unit { font-size:.7rem; } }

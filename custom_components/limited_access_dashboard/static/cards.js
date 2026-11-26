@@ -20,6 +20,122 @@ export function restrictedHass(payload, sendService, report) {
   };
 }
 
+// Native guest thermostat. All writes go through the existing restricted service API.
+const thermostatViews = new WeakMap();
+const thermostatIcons = {
+  off:'M12 3v9 M7 6a8 8 0 1 0 10 0',
+  heat:'M12 22c-5 0-8-3-8-7 0-4 3-6 5-9 0 4 2 5 3 5 3-3 3-6 2-9 5 4 6 9 6 13 0 4-3 7-8 7z M12 21c-2 0-3-2-3-4 0-2 2-4 3-5 0 2 3 3 3 5 0 2-1 4-3 4z',
+  cool:'M12 2v20 M3.3 7l17.4 10 M3.3 17L20.7 7 M8 4l4 4 4-4 M8 20l4-4 4 4 M3 11l5-1-1-5 M21 13l-5 1 1 5 M3 13l5 1-1 5 M21 11l-5-1 1-5',
+  heat_cool:'M12 2v5 M12 17v5 M2 12h5 M17 12h5 M5 5l3 3 M16 16l3 3 M5 19l3-3 M16 8l3-3 M12 7a5 5 0 1 0 0 10z',
+  auto:'M5 8a8 8 0 0 1 14-2l2 3 M21 3v6h-6 M19 16a8 8 0 0 1-14 2l-2-3 M3 21v-6h6',
+  dry:'M12 2c-2 4-7 9-7 13a7 7 0 0 0 14 0c0-4-5-9-7-13z',
+  fan_only:'M12 10c-4-9 7-10 6-4 0 2-2 4-4 5 M14 12c9-4 10 7 4 6-2 0-4-2-5-4 M12 14c4 9-7 10-6 4 0-2 2-4 4-5 M10 12c-9 4-10-7-4-6 2 0 4 2 5 4 M14 12a2 2 0 1 1-4 0 2 2 0 0 1 4 0',
+  thermometer:'M10 14V5a2 2 0 0 1 4 0v9a4 4 0 1 1-4 0z M12 10v8',
+};
+const svgNS='http://www.w3.org/2000/svg';
+function thermostatSvg(tag,attrs={}) { const node=document.createElementNS(svgNS,tag); for(const [k,v] of Object.entries(attrs))node.setAttribute(k,String(v));return node; }
+function thermostatIcon(mode) { const svg=thermostatSvg('svg',{viewBox:'0 0 24 24',width:24,height:24,'aria-hidden':'true',fill:'none',stroke:'currentColor','stroke-width':1.9,'stroke-linecap':'round','stroke-linejoin':'round'});svg.append(thermostatSvg('path',{d:thermostatIcons[mode] || thermostatIcons.auto}));return svg; }
+const climateLabel = value => ({heat_cool:'Heat / Cool',fan_only:'Fan only',auto:'Auto',off:'Off',heat:'Heat',cool:'Cool',dry:'Dry'}[value] || String(value || '').replaceAll('_',' ').replace(/^./,c=>c.toUpperCase()));
+const hvacStatus = value => ({heating:'Heating',cooling:'Cooling',idle:'Idle',off:'Off',drying:'Drying',fan:'Fan',defrosting:'Defrosting',preheating:'Preheating'}[value] || climateLabel(value));
+const dialPoint = fraction => {const a=(135+270*fraction)*Math.PI/180;return [150+112*Math.cos(a),139+112*Math.sin(a)];};
+function dialArc(start,end) {const a=dialPoint(start),b=dialPoint(end);return `M ${a[0]} ${a[1]} A 112 112 0 ${end-start>2/3?1:0} 1 ${b[0]} ${b[1]}`;}
+const finiteTemp = value => value !== null && value !== undefined && value !== '' && Number.isFinite(Number(value));
+function mountThermostat(node,sendService,fetchState,applyState) {
+  const title=node.querySelector('h2').textContent;
+  const readOnly=node.dataset.climateReadOnly==='true';
+  node.classList.add('thermostat-card');
+  node.dataset.thermostatEnhanced='true';
+  const heading=el('h2',title,'thermostat-title');
+  const dial=el('div',undefined,'thermostat-dial');
+  const svg=thermostatSvg('svg',{viewBox:'0 0 300 240','aria-hidden':'true'});
+  const track=thermostatSvg('path',{d:dialArc(0,1),class:'thermostat-track'});
+  const fill=thermostatSvg('path',{class:'thermostat-fill'});
+  const handle=thermostatSvg('circle',{r:8,class:'thermostat-handle'});
+  const second=thermostatSvg('circle',{r:8,class:'thermostat-handle thermostat-second'});
+  const hit=thermostatSvg('path',{d:dialArc(0,1),class:'thermostat-hit'});
+  svg.append(track,fill,handle,second,hit);
+  const center=el('div',undefined,'thermostat-center');
+  const status=el('div',undefined,'thermostat-status');
+  const target=el('div',undefined,'thermostat-target');
+  const current=el('div',undefined,'thermostat-current');
+  const currentText=el('span');current.append(thermostatIcon('thermometer'),currentText);
+  center.append(status,target,current);
+  const adjust=el('div',undefined,'thermostat-adjust');
+  const minus=el('button','−','thermostat-step');minus.type='button';minus.setAttribute('aria-label','Decrease target temperature');
+  const plus=el('button','+','thermostat-step');plus.type='button';plus.setAttribute('aria-label','Increase target temperature');adjust.append(minus,plus);
+  const range=el('div',undefined,'thermostat-range');
+  const modeBar=el('div',undefined,'thermostat-modes');modeBar.setAttribute('role','group');modeBar.setAttribute('aria-label','HVAC mode');
+  const fanRow=el('label',undefined,'thermostat-fan');fanRow.append(thermostatIcon('fan_only'));
+  const fan=el('select');fan.setAttribute('aria-label','Fan mode');fanRow.append(fan);
+  const feedback=el('p',undefined,'thermostat-feedback');feedback.setAttribute('role','status');
+  dial.append(svg,center,adjust);node.replaceChildren(heading,dial,range,modeBar,fanRow,feedback);
+  let card,attrs={},allowed=false,field='temperature',draft=null,busy=false,timer=null,drag=false,cooldown=0,modeKey='',fanKey='',rangeKey='';
+  const values=()=>draft || card?.climate_controls?.values || {};
+  const bounds=()=>card?.climate_controls;
+  const fields=()=>bounds()?.fields || [];
+  const step=()=>finiteTemp(attrs.target_temp_step)&&Number(attrs.target_temp_step)>0?Number(attrs.target_temp_step):(card?.temperature_unit==='°F'?1:.5);
+  const canAdjust=()=>!readOnly&&allowed&&!busy&&fields().includes(field)&&finiteTemp(values()[field])&&Number(bounds().max)>Number(bounds().min)&&fields().every(key=>finiteTemp(values()[key]));
+  const format=v=>finiteTemp(v)?Number(Number(v).toFixed(3)).toString():'—';
+  const fraction=v=>Math.max(0,Math.min(1,(Number(v)-Number(bounds().min))/(Number(bounds().max)-Number(bounds().min))));
+  const show=(element,visible)=>{element.hidden=!visible;};
+  const labelMode=()=>card?.climate_operations?.hvac_mode;
+  function draw(){
+    if(!card)return;
+    const ops=card.climate_operations || {};const mode=labelMode();const action=attrs.hvac_action;
+    node.dataset.hvacMode=mode || 'off';node.dataset.hvacAction=action || '';
+    const unit=card.temperature_unit || '';
+    status.textContent=!card.available?'Unavailable':mode==='off'?'Off':hvacStatus(action || mode || card.state);
+    target.replaceChildren();const display=el('span',format(values()[field]),'thermostat-number');const units=el('span',unit,'thermostat-unit');target.append(display,units);
+    currentText.textContent=`${format(card.current_temperature)} ${unit}`;
+    const valid=fields().includes(field)&&finiteTemp(values()[field])&&Number(bounds()?.max)>Number(bounds()?.min);
+    const dual=fields().length===2&&fields().every(key=>finiteTemp(values()[key]));
+    const pos=valid?fraction(values()[field]):0;
+    show(fill,valid && (dual || pos>0));show(handle,valid);show(second,valid&&dual);
+    if(valid){const p=dialPoint(pos);handle.setAttribute('cx',p[0]);handle.setAttribute('cy',p[1]);fill.setAttribute('d',dual?dialArc(fraction(values().target_temp_low),fraction(values().target_temp_high)):dialArc(0,pos));if(dual){const other=dialPoint(fraction(values()[fields().find(key=>key!==field)]));second.setAttribute('cx',other[0]);second.setAttribute('cy',other[1]);}}
+    show(adjust,!readOnly&&fields().length>0);minus.disabled=!canAdjust()||Number(values()[field])<=Number(bounds()?.min);plus.disabled=!canAdjust()||Number(values()[field])>=Number(bounds()?.max);
+    hit.classList.toggle('enabled',canAdjust());
+    const rk=fields().join(',');if(rk!==rangeKey){rangeKey=rk;range.replaceChildren();if(fields().length===2)for(const key of fields()){const b=el('button');b.type='button';b.dataset.field=key;b.onclick=()=>{field=key;draw();};range.append(b);}}
+    show(range,fields().length===2);for(const b of range.children){b.textContent=`${b.dataset.field==='target_temp_low'?'Heat':'Cool'} ${format(values()[b.dataset.field])} ${unit}`;b.setAttribute('aria-pressed',String(b.dataset.field===field));b.disabled=readOnly||!allowed||busy||!!draft;}
+    const modes=ops.hvac_modes || [];const mk=JSON.stringify([modes,!!ops.turn_on,!!ops.turn_off]);
+    if(mk!==modeKey){modeKey=mk;modeBar.replaceChildren();const choices=[...modes];if(!modes.includes('off')&&ops.turn_off)choices.unshift('@off');if(ops.turn_on&&!modes.some(m=>m!=='off'))choices.push('@on');for(const choice of choices){const m=choice==='@off'||choice==='@on'?'off':choice;const b=el('button');b.type='button';b.dataset.mode=choice;const name=choice==='@on'?'Turn on':choice==='@off'?'Turn off':climateLabel(m);b.title=name;b.setAttribute('aria-label',name);b.append(thermostatIcon(m));b.onclick=()=>send(choice==='@on'?'turn_on':choice==='@off'?'turn_off':'set_hvac_mode',choice.startsWith('@')?{}:{hvac_mode:choice});modeBar.append(b);}}
+    show(modeBar,!readOnly&&modeBar.children.length>0);for(const b of modeBar.children){const selected=b.dataset.mode===mode||(b.dataset.mode==='@off'&&mode==='off');b.setAttribute('aria-pressed',String(selected));b.disabled=!allowed||busy||!!draft||selected;}
+    const fans=ops.fan_modes || [];const fk=JSON.stringify(fans);if(fk!==fanKey){fanKey=fk;fan.replaceChildren(new Option('Select fan mode','',false,false));fan.options[0].disabled=true;for(const f of fans)fan.append(new Option(climateLabel(f),f));}
+    fan.value=fans.includes(ops.fan_mode)?ops.fan_mode:'';fan.disabled=!allowed||busy||!!draft||!fans.length;show(fanRow,!readOnly&&fans.length>0);
+  }
+  async function send(service,data){
+    if(readOnly||!allowed||busy)return;
+    busy=true;feedback.textContent='';draw();
+    try{
+      const remaining=cooldown-Date.now();if(remaining>0)await new Promise(resolve=>setTimeout(resolve,remaining));
+      if(!node.isConnected||!allowed)return;
+      cooldown=Date.now()+2100;
+      await sendService('climate',service,{...data,entity_id:node.dataset.entityId});
+      feedback.textContent='Command sent';
+      const next=await fetchState('/api/state');applyState(next);
+    }catch(error){feedback.textContent='Unable to update thermostat. Try again in a moment.';}
+    finally{busy=false;draft=null;draw();}
+  }
+  function change(value,commit=true){
+    if(!canAdjust())return;
+    const c=bounds(), s=step();let next=Math.min(Number(c.max),Math.max(Number(c.min),Number((Number(c.min)+Math.round((value-Number(c.min))/s)*s).toFixed(4))));
+    if(field==='target_temp_low')next=Math.min(next,Number(values().target_temp_high));if(field==='target_temp_high')next=Math.max(next,Number(values().target_temp_low));
+    draft={...values(),[field]:next};draw();clearTimeout(timer);if(commit)timer=setTimeout(commitDraft,500);
+  }
+  function commitDraft(){clearTimeout(timer);if(draft&&!busy){const data=Object.fromEntries(fields().map(key=>[key,Number(draft[key])]));if(fields().every(key=>finiteTemp(draft[key])))send('set_temperature',data);else{draft=null;draw();}}}
+  minus.onclick=()=>change(Number(values()[field])-step());plus.onclick=()=>change(Number(values()[field])+step());fan.onchange=()=>send('set_fan_mode',{fan_mode:fan.value});
+  function dragValue(event){const r=svg.getBoundingClientRect();const x=(event.clientX-r.left)*300/r.width-150;const y=(event.clientY-r.top)*240/r.height-139;const angle=(Math.atan2(y,x)*180/Math.PI+360-135)%360;const f=angle<=270?angle/270:angle<315?1:0;return Number(bounds().min)+f*(Number(bounds().max)-Number(bounds().min));}
+  hit.addEventListener('pointerdown',event=>{if(!canAdjust()||event.button!==0)return;event.preventDefault();drag=true;hit.setPointerCapture(event.pointerId);change(dragValue(event),false);});
+  hit.addEventListener('pointermove',event=>{if(drag&&canAdjust())change(dragValue(event),false);});
+  hit.addEventListener('pointerup',()=>{if(drag){drag=false;commitDraft();}});
+  hit.addEventListener('pointercancel',()=>{drag=false;clearTimeout(timer);draft=null;draw();});
+  return (next,attributes,enabled)=>{
+    const oldFields=fields().join(',');card=next;attrs=attributes || {};allowed=enabled&&card.available;
+    if(!fields().includes(field))field=fields()[0] || 'temperature';
+    if(!allowed||oldFields!==fields().join(',')){clearTimeout(timer);drag=false;draft=null;}
+    draw();
+  };
+}
+
 const grid = document.querySelector('[data-base-path]');
 if (grid) start().catch(error => {
   const notice=el('p',`Dashboard layout could not load: ${error.message}`,'notice error');grid.before(notice);
@@ -63,7 +179,7 @@ async function start(){
     if(!source)return el('p',`Entity is no longer approved: ${id}`,'notice error');
     const node=source.cloneNode(true);
     if(title)node.querySelector('h2').textContent=title;
-    if(display==='state')for(const form of node.querySelectorAll('form, a.tile-action'))form.remove();
+    if(display==='state'){node.dataset.climateReadOnly='true';for(const form of node.querySelectorAll('form, a.tile-action'))form.remove();}
     node.classList.toggle('compact-card',display==='compact');return node;
   };
   const build=config=>{
@@ -128,6 +244,11 @@ async function start(){
     for(const card of custom){try{card.hass=hass;observeRender(card);}catch(error){report(error.message);}}
     for(const state of payload.cards){for(const node of grid.querySelectorAll(`[data-entity-id="${CSS.escape(state.entity_id)}"]`)){
       node.classList.toggle('active',state.active);node.classList.toggle('unavailable',!state.available);
+      if(state.action==='climate'){
+        if(!thermostatViews.has(node))thermostatViews.set(node,mountThermostat(node,sendService,get,update));
+        thermostatViews.get(node)(state,payload.states?.[state.entity_id]?.attributes,payload.available);
+        continue;
+      }
       const label=node.querySelector('.state-value');if(label)label.textContent=`${state.state}${state.unit?` ${state.unit}`:''}`;
       const climate = state.climate_controls;
       const current = node.querySelector('.climate-current');
